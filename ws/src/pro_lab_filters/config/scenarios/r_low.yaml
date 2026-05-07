@@ -1,0 +1,20 @@
+# R variation: LOW measurement noise.
+# Filter trusts /pose & /imu strongly. Estimate snaps to measurements;
+# brittle if measurements are actually noisy in reality (over-confident).
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    init_distribution: gaussian
+    init_x:       -8.00
+    init_y:       -0.50
+    init_yaw:      0.00
+    init_spread_xy:  0.10
+    init_spread_yaw: 0.05
+    init_cov:        0.01
+    num_particles:   500
+    # Measurement noise — small R means "trust the sensors"
+    r_yaw_imu:  0.005
+    r_pose_xy:  0.005
+    r_pose_yaw: 0.005
+    # Lidar likelihood
+    scan_sigma: 0.05

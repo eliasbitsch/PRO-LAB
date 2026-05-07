@@ -1,0 +1,18 @@
+<library path="pro_lab_rviz_plugins">
+  <class
+    type="pro_lab_rviz::TeleopPanel"
+    base_class_type="rviz_common::Panel">
+    <description>
+      Foxglove-style directional teleop panel. Press-and-hold a button to
+      drive, release to stop. Publishes geometry_msgs/Twist on /cmd_vel_in.
+    </description>
+  </class>
+  <class
+    type="pro_lab_rviz::KidnapTool"
+    base_class_type="rviz_common::Tool">
+    <description>
+      Click-and-drag to teleport the Gazebo robot model. Publishes
+      PoseWithCovarianceStamped on /kidnap_pose. Does not re-seed the PF.
+    </description>
+  </class>
+</library>

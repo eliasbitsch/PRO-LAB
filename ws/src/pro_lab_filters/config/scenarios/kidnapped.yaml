@@ -1,0 +1,20 @@
+# "Kidnapped robot": no a-priori pose. PF starts with particles UNIFORMLY
+# spread across the whole warehouse map (≈30 m × 20 m). KF/EKF cannot do
+# global localisation — they get a Gaussian centred at the map mid-point with
+# a huge covariance, which is mostly a fairness placeholder.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    # PF: uniform global init
+    init_distribution: uniform
+    init_x:          0.0       # centre of the uniform extent
+    init_y:          0.0
+    init_yaw:        0.0
+    init_extent_xy: 15.0       # ±15 m around the centre  → 30×30 m search box
+    init_extent_yaw: 3.14159   # full ±π
+    num_particles:   3000      # global localisation needs many particles
+
+    # KF/EKF fallback: Gaussian centred at the same point with huge P0
+    init_spread_xy:  10.0
+    init_spread_yaw: 1.5
+    init_cov:        100.0

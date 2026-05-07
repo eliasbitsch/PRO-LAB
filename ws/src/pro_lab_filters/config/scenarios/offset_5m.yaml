@@ -1,0 +1,14 @@
+# Large pose offset: 5 m off in X with a moderate spread (1.0 m).
+# KF/EKF should converge linearly via the /pose update; PF needs the spread
+# to cover the truth or it suffers particle deprivation.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    init_distribution: gaussian
+    init_x:       -3.00       # truth + 5.0 m
+    init_y:       -0.50
+    init_yaw:      0.00
+    init_spread_xy:  1.0
+    init_spread_yaw: 0.20
+    init_cov:        1.0
+    num_particles:   1000     # more particles to cover the wider band

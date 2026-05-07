@@ -1,0 +1,14 @@
+# Right pose, huge uncertainty. Should converge — but slowly for the
+# parametric filters because their initial covariance is so large that early
+# innovations barely move the mean.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    init_distribution: gaussian
+    init_x:       -8.00
+    init_y:       -0.50
+    init_yaw:      0.00
+    init_spread_xy:  3.0
+    init_spread_yaw: 1.5
+    init_cov:        9.0      # KF/EKF P0 ~ sigma^2 = 9
+    num_particles:   1500

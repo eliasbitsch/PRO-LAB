@@ -1,0 +1,20 @@
+# R variation: HIGH measurement noise.
+# Filter mostly ignores /pose & /imu; relies on motion model. Smooth but
+# slow to correct drift. PF lidar weights are nearly uniform, so likelihood
+# barely shapes the cloud.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    init_distribution: gaussian
+    init_x:       -8.00
+    init_y:       -0.50
+    init_yaw:      0.00
+    init_spread_xy:  0.10
+    init_spread_yaw: 0.05
+    init_cov:        0.01
+    num_particles:   500
+    # Measurement noise — large R means "ignore sensor wiggles"
+    r_yaw_imu:  1.0
+    r_pose_xy:  1.0
+    r_pose_yaw: 1.0
+    scan_sigma: 1.0

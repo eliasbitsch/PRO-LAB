@@ -1,0 +1,20 @@
+# Q variation: LOW process noise.
+# The filter strongly trusts its motion model, weakly trusts measurements.
+# Expected: estimate is smooth but slow to react to discrepancies; if init
+# is wrong it lingers. Good for understanding "stiff" vs "responsive" filters.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    # init at truth so the only varied factor is Q
+    init_distribution: gaussian
+    init_x:       -8.00
+    init_y:       -0.50
+    init_yaw:      0.00
+    init_spread_xy:  0.10
+    init_spread_yaw: 0.05
+    init_cov:        0.01
+    num_particles:   500
+    # Process noise — small means "trust the model"
+    q_scale:        0.005           # KF/EKF
+    motion_noise_v: 0.005           # PF
+    motion_noise_w: 0.005           # PF

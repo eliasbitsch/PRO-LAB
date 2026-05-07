@@ -1,0 +1,221 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{subcaption}
+\usepackage{blindtext}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+% Create custom colour for text highlighting
+\definecolor{twblue}{HTML}{1f497d}
+\definecolor{structure}{HTML}{1f497d}
+\definecolor{blindtext}{HTML}{D3D3D3}
+
+\title{ Paper Title Line 1\\ Title Line 2 }
+
+\author{\IEEEauthorblockN{Name Surname}
+}
+
+\maketitle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{abstract}
+Your abstract goes here. Do not use paragraphs, symbols, special characters, footnotes or math in paper title or abstract. Furthermore, do not use citations in the abstract.
+
+\vspace{\baselineskip}
+\color{structure}The following points must be clearly outlined by the abstract:
+\begin{itemize}
+    \item Motivation
+    \item Scientific contribution of the paper
+    \item Verifiability of your results
+\end{itemize}\color{black}
+
+\color{blindtext}\blindtext\color{black}
+
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+
+This is an altered version of the IEEE conference paper template with simplified formatting and Bibtex bibliography. The \textit{refs.bib} file contains all bibliography sources in Bibtex format. The sources can be cited using the \textit{cite} command \cite{Bishop2006Pattern} (see this document's LaTeX source code). The corresponding entry will be generated automatically in the bibliography.
+
+\vspace{\baselineskip}
+Remarks about the paper's structure are marked \color{structure}\textbf{blue}\color{black}, while the template has been filled with blindtext marked in \color{blindtext}\textbf{light gray}\color{black} to roughly indicate each chapter's desired length.
+
+\vspace{\baselineskip}
+\color{structure}Your paper's main part (first page until (and including) references) has to \textbf{exactly fill three pages}, similarly to how it's handled at scientific conferences. In order to achieve this, you can fine-tune text length using paragraphs and image/table scaling.\color{black}
+
+\vspace{\baselineskip}
+\textbf{Please consider the following aspects when writing your paper:}
+\begin{itemize}
+    \item \textbf{Structure}: Adhere to IMRAD and include all required chapters. Make sure that potential readers are able to follow one continuous thread (\textit{$=$ roter Faden}) spanning from introduction to summary and outlook.
+    
+    \item[]
+    \item \textbf{Research}: Read and include relevant sources in introduction and state of the art and use these two chapters to introduce the topic, (scientifically) justify what you are doing and prepare readers for your methods.\\
+    \textbf{Every claim you make must be backed up by either literature or your presented results.}
+    
+    \item[]
+    \item \textbf{Contribution}: Define a clear contribution your paper provides to tell the reader the main scientific benefit of your paper. Justify your contribution based on the problem you are trying to solve. This problem should in turn arise from the research presented in the state of the art.
+    
+    \item[]
+    \item \textbf{Wording}: Make sure that you use appropriate wording (see established conference papers for inspiration). Explain concepts as clearly as possible without over-complicating explanations or including redundant information. Similarly to your code, use the KISS principle (Keep it Stupid Simple)!
+\end{itemize}
+
+\vspace{\baselineskip}
+\color{structure}
+\textbf{Chapter structure}
+\begin{itemize}
+    \item Introduction to the paper's main subject
+    \item Motivation for creating paper contribution
+    \item Problem description arising from motivation
+    \item Paper contribution
+    \item Paper structure
+\end{itemize}
+\color{black}
+
+\color{blindtext}\blindtext\color{black}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{State of the Art}
+
+\color{structure}
+\textbf{Chapter structure}
+\begin{itemize}
+    \item Brief introduction to terminology and basic approaches typically utilised in the field you are researching in (Optional)
+    \item Short description (with references) of existing solutions to your problem
+    \item So What: What do you learn from existing solutions regarding your own contribution and why are you not using them?
+\end{itemize}
+\color{black}
+
+\color{blindtext}\blindtext\blindtext\vspace{\baselineskip}\blindtext\color{black}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Materials and Methods}
+
+\color{structure}
+\textbf{Chapter structure}
+\begin{itemize}
+    \item Description of deployed methodology for creating the contribution 
+    \item Used software packages (cited as sources in bibliography)
+\end{itemize}
+\color{black}
+
+\subsection{Figures}
+Figures as well as tables have to be referred to in the text. Please use Fig.~\ref{fig:technikumLogo} to refer to figures and Tab.~\ref{tab:leereTabelle} to refer to tables.
+
+% Link to drawio: https://app.diagrams.net/
+% Link to inkscape: https://inkscape.org/
+
+\vspace{\baselineskip}
+\textbf{Hint for figures in LaTeX:} Embed images as \textit{.pdf} files. PDF files are stored in vector format and can easily be scaled by LaTeX. Furthermore, text stays natively embedded in them. I suggest finding a workflow with a vector-based editor such as DrawIO or Inkscape (links as comments are in this document's source code) to draw figures and natively export them to \textit{.pdf}.
+
+\vspace{\baselineskip}
+
+If you are using information in a figure that is not your own, you must include a reference in the figure's description. There are thee ways to do this (please note that you will need to use \verb!\protect\cite{}! when adding a citation to a figure's description in LaTeX):
+
+\begin{itemize}
+    \item[]
+    \item[] \textit{(without modification from \cite{Bishop2006Pattern})} 
+    \item[$\to$] Image has been directly copied from source.
+    \item[]
+    \item[] \textit{(with modification from \cite{Bishop2006Pattern})}
+    \item[$\to$] Portions of the original source's image have been copied, but parts have been added/modified/omitted by you.
+    \item[]
+    \item[] \textit{(drawn based on \cite{Bishop2006Pattern})}
+    \item[$\to$] You have completely redrawn the image based on the cited source.
+    \item[]
+\end{itemize}
+
+Directly using other author's figures in publicised work (that includes the master thesis) requires written permission to do so from author and, if present, editor.
+Permission is required as soon as a single pixel is adopted from the original image.
+
+\textbf{Therefore, drawing your own image based on the original image (option 3) is generally the best option.}
+
+%% Erklärung Abbildungsblock:
+% [!h] -> Abbildung wird genau hier und nicht am Seitenanfang/Ende plaziert
+% [width=0.7\columnwidth] -> Abbildung wird auf 70% der Spaltenbreite skaliert
+% {images/fh_technikum_wien_logo_4c_cmyk_2020.pdf} -> Pfad zur Abbildung (im images Ordner)
+% \label{fig:technikumLogo} -> Mithilfe des labels kann im Text auf die Abbildung referenziert werden. Aus "Abbildung \ref{fig:technikumLogo}" im Quellcode wird dann z.B. "Abbildung 1"
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=0.7\columnwidth]{images/fh_technikum_wien_logo_4c_cmyk_2020.pdf}
+    \caption{Figure explanations must be in form of whole sentences with a maximum of two lines.}
+    \label{fig:technikumLogo}
+\end{figure}
+
+\subsection{Tables}
+\textbf{Tables} can be created natively using LaTeX.
+
+%% Erklärung von LaTex Tabellen: https://www.overleaf.com/learn/latex/Tables
+\begin{table}[!h]
+    \centering
+    \setlength{\tabcolsep}{0.5em} % for the horizontal padding
+    {\renewcommand{\arraystretch}{1.2}% for the vertical padding
+    \begin{tabular}{|l|c|c|c|c|r|}
+        \hline
+        \textbf{Col 1} & \textbf{Col 2} & \textbf{Col 3} & \textbf{Col 4} & \textbf{Col 5} & \textbf{Col 6} \\ \hline
+        Row 1 & . & . & . & . & . \\ \hline
+        Row 2 & . & . & . & . & . \\ \hline
+        Row 3 & . & . & . & . & . \\ \hline
+        Row 4 & . & . & . & . & . \\ \hline
+    \end{tabular}}
+    \caption{You can also include references in your figure/table descriptions (drawn with modification from \protect\cite{Bishop2006Pattern}).}
+    \label{tab:leereTabelle}
+\end{table}
+
+\color{blindtext}\blindtext\blindtext\color{black}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experimental Results}
+
+\color{structure}
+\textbf{Chapter structure}
+\begin{itemize}
+    \item Plots and discussion of evaluated metrics
+    \item[]
+    
+    \item[$\to$] \textbf{Make sure that you properly outline in the methods chapter, how you achieved those results. As a general recommendation, try to define your contribution in a way that allows you to evaluate a lot of aspects of your solution, as the results chapter is typically where a majority of the paper length comes from.}
+    \item[]
+    
+    \item Discussion of results (either as a separate paragraph or incorporated into presentation of the results.
+\end{itemize}
+\color{black}
+
+\color{blindtext}\blindtext\blindtext\vspace{\baselineskip}\blindtext\color{black}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Summary and Outlook}
+
+\color{structure}
+\textbf{Chapter structure}
+\begin{itemize}
+    \item Short summary of paper (1 Paragraph)
+    \item Recommendations (with justification from literature or results!) on future work that can be done on the paper's topic
+\end{itemize}
+\color{black}
+
+\color{blindtext}\blindtext\blindtext\color{black}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Literaturverzeichnis
+{\small
+\bibliographystyle{IEEEtranS}
+\bibliography{IEEEabrv,refs}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% End of page 3
+\clearpage 
+
+\section*{Appendix}
+\color{twblue}\textbf{The appendix may include additional content/visualisations that did not fit the main part of the paper.}\color{black}
+
+\end{document}

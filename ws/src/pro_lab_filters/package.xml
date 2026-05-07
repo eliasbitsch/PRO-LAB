@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>pro_lab_filters</name>
+  <version>0.1.0</version>
+  <description>KF, EKF, PF state estimation nodes for TurtleBot4 (IMU-based, no landmarks)</description>
+  <maintainer email="eliasbitsch@hotmail.com">Elias Bitsch</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>eigen</depend>
+  <depend>rviz_common</depend>
+  <depend>pluginlib</depend>
+  <depend>qtbase5-dev</depend>
+  <depend>visualization_msgs</depend>
+  <depend>interactive_markers</depend>
+  <depend>rviz_default_plugins</depend>
+
+  <exec_depend>ros2launch</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <rviz plugin="${prefix}/rviz_plugins.xml"/>
+  </export>
+</package>

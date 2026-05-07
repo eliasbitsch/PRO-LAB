@@ -1,0 +1,20 @@
+# Worst case for PF: WRONG init AND tight spread.
+# Particles are concentrated 3 m off the truth; initial weights all ~0;
+# resampling perpetuates the wrong cloud → "particle deprivation".
+# KF/EKF still converge because their innovation includes the residual; the
+# Kalman gain pulls the estimate toward each /pose measurement.
+#
+# This scenario is the headline finding: PF requires the initial belief to
+# overlap with the truth, otherwise extra recovery (augmented-MCL, scan
+# reset) is needed.
+# Truth spawn: (-8.0, -0.5, yaw=0).
+/**:
+  ros__parameters:
+    init_distribution: gaussian
+    init_x:       -5.00       # truth + 3.0 m
+    init_y:        1.50       # truth + 2.0 m
+    init_yaw:      0.00
+    init_spread_xy:  0.10     # 10 cm — over-confident
+    init_spread_yaw: 0.05
+    init_cov:        0.01     # KF/EKF also over-confident
+    num_particles:   500

@@ -1,0 +1,24 @@
+# Self-defined landmarks for the assignment's "Landmark detection" item.
+# Three vertical posts placed in the warehouse aisles at fixed world (map)
+# coordinates. The landmark_detector_node reads this list, simulates noisy
+# range + bearing observations from the robot's current pose, and publishes
+# them on /landmarks/observations. It also publishes Marker visualisations
+# so the landmarks show up in RViz / Foxglove.
+#
+# Format: [id, x, y]  (z = 0; landmarks are vertical posts so only xy).
+landmarks:
+  - id: 1
+    x: -5.0
+    y:  2.0
+  - id: 2
+    x:  3.0
+    y: -2.0
+  - id: 3
+    x: -2.0
+    y: -6.0
+
+# Observation noise (used by the simulated detector).
+range_sigma:   0.10        # m
+bearing_sigma: 0.05        # rad
+max_range:     6.0         # m — detector "sees" landmark only if closer
+fov_rad:       3.14159     # full 2π by default (omnidirectional)

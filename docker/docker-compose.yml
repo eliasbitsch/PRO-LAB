@@ -1,0 +1,76 @@
+services:
+  prolab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: prolab:jazzy
+    container_name: prolab_jazzy
+    hostname: prolab
+    stdin_open: true
+    tty: true
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - TURTLEBOT4_MODEL=standard
+      - DISPLAY=${DISPLAY:-:0}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XDG_RUNTIME_DIR=/tmp/runtime-ros
+      # Match native gz sim (run_gazebo_native.sh) so ros_gz_bridge & spawn
+      # see the externally running Gazebo over gz-transport.
+      - GZ_PARTITION=prolab
+      - GZ_IP=127.0.0.1
+      # WSL2 GPU passthrough: use NVIDIA via Mesa D3D12
+      - GALLIUM_DRIVER=d3d12
+      - MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+      - LIBGL_ALWAYS_SOFTWARE=0
+      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg:rw
+      - /usr/lib/wsl:/usr/lib/wsl:ro
+      - ../ws/src:/home/ros/ws/src
+      - prolab_build:/home/ros/ws/build
+      - prolab_install:/home/ros/ws/install
+      - prolab_log:/home/ros/ws/log
+      - prolab_gz_cache:/home/ros/.gz
+    devices:
+      # WSL2 GPU device — required for Mesa D3D12 -> NVIDIA
+      - /dev/dxg:/dev/dxg
+    command: bash
+
+  # Self-hosted Foxglove Studio web UI (husarion's pre-built image).
+  # Open http://localhost:8082 in any browser, then in the app:
+  #   "Open Connection" → "Foxglove WebSocket" → ws://localhost:8765
+  foxglove_ui:
+    image: ghcr.io/lichtblick-suite/lichtblick:latest
+    container_name: foxglove_ui
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./foxglove_init.sh:/foxglove_init.sh:ro
+      - ../ws/src/pro_lab_filters/config/foxglove_layout.json:/layouts/prolab_layout.json:ro
+    entrypoint: ["/bin/sh", "/foxglove_init.sh"]
+    command: ["caddy", "file-server", "--listen", ":8080"]
+    restart: unless-stopped
+
+  # Publish the host-network foxglove_bridge (port 8765, only reachable
+  # inside the WSL2 distro because prolab uses network_mode: host) to a
+  # Docker-published port the Windows browser can reach via localhost:8765.
+  ws_publish:
+    image: alpine/socat:latest
+    container_name: prolab_ws_publish
+    ports:
+      - "8767:8765"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: >-
+      TCP-LISTEN:8765,fork,reuseaddr TCP:host.docker.internal:8765
+    restart: unless-stopped
+
+volumes:
+  prolab_build:
+  prolab_install:
+  prolab_log:
+  prolab_gz_cache:
