@@ -3,19 +3,19 @@
 # coordinates. The landmark_detector_node reads this list, simulates noisy
 # range + bearing observations from the robot's current pose, and publishes
 # them on /landmarks/observations. It also publishes Marker visualisations
-# so the landmarks show up in RViz / Foxglove.
+# so the landmarks show up in RViz.
 #
 # Format: [id, x, y]  (z = 0; landmarks are vertical posts so only xy).
 landmarks:
   - id: 1
-    x: -5.0
-    y:  2.0
+    x: -5.5
+    y:  1.5
   - id: 2
-    x:  3.0
-    y: -2.0
+    x: -6.5
+    y: -1.0
   - id: 3
-    x: -2.0
-    y: -6.0
+    x: -8.0
+    y:  1.5
 
 # Observation noise (used by the simulated detector).
 range_sigma:   0.10        # m

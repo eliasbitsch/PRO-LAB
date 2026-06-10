@@ -1,9 +1,10 @@
 // cmd_vel watchdog: forwards /cmd_vel_in to /cmd_vel and emits a single
 // zero-Twist when the input goes silent for `timeout` seconds.
 //
-// Foxglove's Teleop panel only publishes while a button is held. On release
-// it stops publishing — but Gazebo's diff-drive plugin keeps applying the
-// last command forever, so the robot rolls on. This relay closes that gap.
+// Key-hold publishers (RViz teleop panel, teleop_twist_keyboard) only emit
+// while a key is held. On release they stop publishing — but Gazebo's
+// diff-drive plugin keeps applying the last command forever, so the robot
+// rolls on. This relay closes that gap.
 #include <chrono>
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/rclcpp.hpp>

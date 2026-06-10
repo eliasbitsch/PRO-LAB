@@ -7,12 +7,12 @@
 # This scenario is the headline finding: PF requires the initial belief to
 # overlap with the truth, otherwise extra recovery (augmented-MCL, scan
 # reset) is needed.
-# Truth spawn: (-8.0, -0.5, yaw=0).
+# Truth spawn: (0.0, 0.0, yaw=0).
 /**:
   ros__parameters:
     init_distribution: gaussian
-    init_x:       -5.00       # truth + 3.0 m
-    init_y:        1.50       # truth + 2.0 m
+    init_x:        3.00       # truth + 3.0 m
+    init_y:        2.00       # truth + 2.0 m
     init_yaw:      0.00
     init_spread_xy:  0.10     # 10 cm — over-confident
     init_spread_yaw: 0.05

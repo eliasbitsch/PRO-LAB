@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!-- A physical landmark: a vertical I-beam (I-profile steel girder) the TB4
+     lidar can actually see, so the scan-cluster detector has a real, more
+     practical (and asymmetric, unlike a cylinder) target. Built from two
+     flanges + a connecting web, extruded 1 m to span the lidar plane.
+     Spawned at the landmark coords by the experiment launch (different
+     -name/-x/-y per instance). Static so physics ignores it.
+     Cross-section ~0.30 m (flange) x 0.26 m (depth). -->
+<sdf version="1.8">
+  <model name="landmark_post">
+    <static>true</static>
+    <link name="link">
+      <pose>0 0 6.0 0 0 0</pose>
+
+      <!-- +y flange -->
+      <collision name="flange_a_col">
+        <pose>0 0.45 0 0 0 0</pose>
+        <geometry><box><size>1.40 0.20 12.0</size></box></geometry>
+      </collision>
+      <visual name="flange_a">
+        <pose>0 0.45 0 0 0 0</pose>
+        <geometry><box><size>1.40 0.20 12.0</size></box></geometry>
+        <material><ambient>0.45 0.45 0.5 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+      </visual>
+
+      <!-- web (connects the flanges) -->
+      <collision name="web_col">
+        <geometry><box><size>0.60 0.90 12.0</size></box></geometry>
+      </collision>
+      <visual name="web">
+        <geometry><box><size>0.60 0.90 12.0</size></box></geometry>
+        <material><ambient>0.45 0.45 0.5 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+      </visual>
+
+      <!-- -y flange -->
+      <collision name="flange_b_col">
+        <pose>0 -0.45 0 0 0 0</pose>
+        <geometry><box><size>1.40 0.20 12.0</size></box></geometry>
+      </collision>
+      <visual name="flange_b">
+        <pose>0 -0.45 0 0 0 0</pose>
+        <geometry><box><size>1.40 0.20 12.0</size></box></geometry>
+        <material><ambient>0.45 0.45 0.5 1</ambient><diffuse>0.5 0.5 0.55 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

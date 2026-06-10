@@ -54,7 +54,7 @@ void KidnapTool::onInitialize() {
   }
   node_ = std::make_shared<rclcpp::Node>("rviz_kidnap_tool");
 
-  // Match robot_teleporter's QoS so a click survives a Foxglove F5 too.
+  // Match robot_teleporter's QoS so a click survives any subscriber restart.
   rclcpp::QoS qos(10);
   qos.reliable().transient_local();
   pub_ = node_->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(

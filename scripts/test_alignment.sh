@@ -4,9 +4,9 @@
 #    (PF-Init exakt auf GZ-Spawn, sehr enger Spread)
 #  - Kein Kidnap, kein /initialpose-Klick nötig
 #
-# Was du dann in Foxglove pruefst:
-#   1) Map-Panel: aligned die OccupancyGrid mit den /scan Punkten?
-#   2) TF-Panel: ist map -> odom ungefaehr Identity (alle ~0)?
+# Was du dann in RViz pruefst:
+#   1) Map-Display: aligned die OccupancyGrid mit den /scan Punkten?
+#   2) TF-Display: ist map -> odom ungefaehr Identity (alle ~0)?
 #
 # Beantworte danach mit ja/nein:
 #   ja  -> alignment OK, das urspruengliche Problem war Filter-Konvergenz

@@ -3,7 +3,7 @@
     type="pro_lab_rviz::TeleopPanel"
     base_class_type="rviz_common::Panel">
     <description>
-      Foxglove-style directional teleop panel. Press-and-hold a button to
+      Directional teleop panel. Press-and-hold a button to
       drive, release to stop. Publishes geometry_msgs/Twist on /cmd_vel_in.
     </description>
   </class>

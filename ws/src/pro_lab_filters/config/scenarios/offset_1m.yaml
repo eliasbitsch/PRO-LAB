@@ -1,10 +1,10 @@
 # Mild wrong init: 1 m off in X. Filter still believes the spread covers truth.
-# Truth spawn: (-8.0, -0.5, yaw=0).
+# Truth spawn: (0.0, 0.0, yaw=0).
 /**:
   ros__parameters:
     init_distribution: gaussian
-    init_x:       -7.00       # truth + 1.0 m
-    init_y:       -0.50
+    init_x:        1.00       # truth + 1.0 m
+    init_y:        0.00
     init_yaw:      0.00
     init_spread_xy:  0.50     # half a metre — covers the 1 m bias loosely
     init_spread_yaw: 0.10

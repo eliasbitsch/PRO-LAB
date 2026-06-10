@@ -1,10 +1,15 @@
-// Foxglove-style directional teleop panel for RViz2.
+// Directional teleop panel for RViz2 (dpad).
 //
 // Pie-slice "dpad" with a circular Stop button in the centre. Press-and-hold
 // to drive, release (or move outside) to stop. Publishes geometry_msgs/Twist
 // on /cmd_vel_in — cmd_vel_watchdog forwards it to /cmd_vel and zeroes after
 // a short silence, so the release-to-stop semantic is enforced even if the
 // last message gets dropped.
+//
+// Global keyboard control: arrow keys drive the robot anywhere in RViz
+// (qApp event filter), regardless of which RViz panel has focus. Space/S
+// stops. The filter ignores keys when a text input widget has focus, so
+// typing into RViz config fields still works.
 #pragma once
 
 #include <QPaintEvent>
@@ -47,7 +52,11 @@ class TeleopPanel : public rviz_common::Panel {
   Q_OBJECT
 public:
   explicit TeleopPanel(QWidget * parent = nullptr);
+  ~TeleopPanel() override;
   void onInitialize() override;
+
+protected:
+  bool eventFilter(QObject * obj, QEvent * ev) override;
 
 private Q_SLOTS:
   void publishTick();
@@ -63,6 +72,9 @@ private:
   double w_     {0.0};
   double v_max_ {0.25};
   double w_max_ {0.6};
+  // Currently-pressed arrow key (0 = none). Tracked so a release event for
+  // a different key doesn't accidentally zero a still-held one.
+  int    held_key_ {0};
 };
 
 }  // namespace pro_lab_rviz

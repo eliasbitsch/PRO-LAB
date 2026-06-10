@@ -14,6 +14,13 @@
 //                                        `convergence_threshold_xy` for
 //                                        `convergence_window_s` seconds)
 //   /metrics/<f>/time_to_converge  Float64 (s, set once on first convergence)
+//   /metrics/<f>/nees           Float64  Normalized Estimation Error Squared
+//                                         e^T · P^-1 · e for the published
+//                                         covariance. χ²-consistent filter
+//                                         tracks the state-dim mean (≈3 here).
+//                                         A persistent NEES >> 3 means the
+//                                         filter is overconfident — the
+//                                         classic wrong-init failure mode.
 //
 // Parameters:
 //   convergence_threshold_xy  default 0.20 m
@@ -26,6 +33,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <Eigen/Core>
+#include <Eigen/LU>
 
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -47,6 +57,7 @@ struct FilterState {
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr rmse_yaw_pub;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr conv_pub;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr ttc_pub;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr nees_pub;
 
   // running-RMSE accumulators
   std::size_t n = 0;
@@ -92,6 +103,7 @@ public:
       fs.rmse_yaw_pub = create_publisher<std_msgs::msg::Float64>(out + "rmse_yaw", 10);
       fs.conv_pub     = create_publisher<std_msgs::msg::Bool>(out + "converged", 10);
       fs.ttc_pub      = create_publisher<std_msgs::msg::Float64>(out + "time_to_converge", 10);
+      fs.nees_pub     = create_publisher<std_msgs::msg::Float64>(out + "nees", 10);
       fs.sub = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
           in, 10,
           [this, f](geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr m) {
@@ -119,6 +131,14 @@ private:
     double err_yaw = wrap_pi(
         pro_lab_filters::quat_to_yaw(msg.pose.pose.orientation) - truth_yaw_);
 
+    // Reject NaN/Inf samples before they poison the accumulator. A filter
+    // sometimes publishes a NaN pose during init/transient (PF before first
+    // resample, AMCL before /initialpose); accumulating NaN into sse_xy
+    // makes every subsequent rmse_xy publish NaN for the rest of the run.
+    if (!std::isfinite(err_xy) || !std::isfinite(err_yaw)) {
+      return;
+    }
+
     // running RMSE
     fs.n += 1;
     fs.sse_xy  += err_xy * err_xy;
@@ -134,6 +154,23 @@ private:
     pub_d(fs.err_yaw_pub, err_yaw);
     pub_d(fs.rmse_xy_pub, rmse_xy);
     pub_d(fs.rmse_yaw_pub, rmse_yaw);
+
+    // NEES = e^T · P^-1 · e over (x, y, yaw). The PoseWithCovariance cov is a
+    // 6×6 row-major buffer for [x, y, z, roll, pitch, yaw]; we lift the
+    // (0,1,5) sub-block. If P is singular or zero we publish NaN — that's
+    // also diagnostic ("filter forgot to publish covariance").
+    Eigen::Matrix3d P;
+    auto Cij = [&](int i, int j) { return msg.pose.covariance[i * 6 + j]; };
+    P << Cij(0,0), Cij(0,1), Cij(0,5),
+         Cij(1,0), Cij(1,1), Cij(1,5),
+         Cij(5,0), Cij(5,1), Cij(5,5);
+    Eigen::Vector3d e(ex, ey, err_yaw);
+    double nees = std::numeric_limits<double>::quiet_NaN();
+    Eigen::FullPivLU<Eigen::Matrix3d> lu(P);
+    if (lu.isInvertible() && P.diagonal().minCoeff() > 1e-12) {
+      nees = e.transpose() * lu.inverse() * e;
+    }
+    pub_d(fs.nees_pub, nees);
 
     // convergence detection — error_xy under threshold for window_s seconds
     if (!fs.converged) {

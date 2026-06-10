@@ -2,12 +2,12 @@
 # Linearised filters (KF/EKF) handle this poorly because the motion model is
 # nonlinear in yaw — interesting comparison vs PF which represents arbitrary
 # yaw distributions.
-# Truth spawn: (-8.0, -0.5, yaw=0).
+# Truth spawn: (0.0, 0.0, yaw=0). Position is correct, only yaw is wrong.
 /**:
   ros__parameters:
     init_distribution: gaussian
-    init_x:       -8.00
-    init_y:       -0.50
+    init_x:        0.00
+    init_y:        0.00
     init_yaw:      1.5708    # truth (0) + pi/2
     init_spread_xy:  0.20
     init_spread_yaw: 0.30    # somewhat wide so PF particles span the truth

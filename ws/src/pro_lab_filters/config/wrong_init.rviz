@@ -24,6 +24,13 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 2
+      Name: Map Axes
+      Radius: 0.1
+      Reference Frame: map
+      Value: true
     - Alpha: 0.5
       Cell Size: 1
       Class: rviz_default_plugins/Grid
@@ -236,6 +243,62 @@ Visualization Manager:
         Value: /ground_truth/pose
       Value: true
     - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 80; 200; 120
+      Enabled: true
+      Head Diameter: 0
+      Head Length: 0
+      Length: 0
+      Line Style: Billboards
+      Line Width: 0.12
+      Name: Planned Path (green)
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 50; 130; 246
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.05
+      Shaft Length: 0.05
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /planned_path
+      Value: true
+    - Alpha: 0.5
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 50; 130; 246
+      Enabled: true
+      Head Diameter: 0
+      Head Length: 0
+      Length: 0
+      Line Style: Billboards
+      Line Width: 0.12
+      Name: Truth Path (blue dim)
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /ground_truth/path
+      Value: true
+    - Alpha: 1
       Axes Length: 1
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/PoseWithCovariance
@@ -309,6 +372,41 @@ Visualization Manager:
       Axes Length: 1
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/PoseWithCovariance
+      Color: 170; 85; 200
+      Covariance:
+        Orientation:
+          Alpha: 0.30000001192092896
+          Color: 170; 85; 200
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 170; 85; 200
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Head Length: 0.20000000298023224
+      Head Radius: 0.10000000149011612
+      Name: EKF-LF (purple)
+      Shaft Length: 0.6000000238418579
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /ekf_lf/pose
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/PoseWithCovariance
       Color: 255; 85; 102
       Covariance:
         Orientation:
@@ -339,6 +437,41 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /pf/pose
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/PoseWithCovariance
+      Color: 255; 196; 0
+      Covariance:
+        Orientation:
+          Alpha: 0.30000001192092896
+          Color: 255; 196; 0
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 255; 196; 0
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Head Length: 0.20000000298023224
+      Head Radius: 0.10000000149011612
+      Name: AMCL (yellow)
+      Shaft Length: 0.6000000238418579
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /amcl/pose
       Value: true
     - Alpha: 0.699999988079071
       Arrow Length: 0.25
@@ -383,15 +516,6 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /map_updates
       Use Timestamp: false
-      Value: true
-    - Class: rviz_default_plugins/InteractiveMarkers
-      Enable Transparency: true
-      Enabled: true
-      Interactive Markers Namespace: /teleop_marker
-      Name: Teleop Marker
-      Show Axes: false
-      Show Descriptions: true
-      Show Visual Aids: true
       Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
@@ -444,7 +568,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 30; 32; 40
-    Fixed Frame: base_link
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -504,7 +628,7 @@ Visualization Manager:
       Name: Current View
       Near Clip Distance: 0.009999999776482582
       Pitch: 0.9899998903274536
-      Target Frame: <Fixed Frame>
+      Target Frame: base_link
       Value: Orbit (rviz_default_plugins)
       Yaw: 1.7150002717971802
     Saved: ~

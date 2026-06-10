@@ -18,3 +18,13 @@
     init_spread_xy:  10.0
     init_spread_yaw: 1.5
     init_cov:        100.0
+
+    # Auto-kidnap schedule (stride 4: t_s, x, y, yaw). Reproducible kidnap
+    # events for headless batches — replaces the RViz Kidnap tool.
+    # Times are seconds after the scripted motion starts (start_delay_s in
+    # auto_kidnapper). Pick targets inside the open warehouse area, not
+    # inside shelves/pillars (those would collide on respawn).
+    #   t=18 s → warp to (4.0, -3.0, 0)   — south aisle, near landmark row -0
+    #   t=28 s → warp to (-4.0, 5.0, π)  — north-west, facing west (180°)
+    kidnap_schedule: [18.0,  4.0, -3.0,  0.0,
+                      28.0, -4.0,  5.0,  3.14159]

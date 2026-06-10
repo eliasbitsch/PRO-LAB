@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-tf2 \
     ros-jazzy-tf2-ros \
     ros-jazzy-rviz2 \
-    ros-jazzy-foxglove-bridge \
     ros-jazzy-xacro \
     ros-jazzy-robot-state-publisher \
     ros-jazzy-joint-state-publisher \
@@ -49,8 +48,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-slam-toolbox \
     && rm -rf /var/lib/apt/lists/*
 
-# Disable RGBD camera sensor in TurtleBot4 URDF — crashes Ogre2 on WSLg D3D12.
-# We don't need it for IMU-based filter development.
+# Disable RGBD camera sensor in TurtleBot4 URDF — heavy Ogre2 sensor we don't
+# need for IMU-based filter development, and it has historically caused
+# crashes on some GPU stacks.
 RUN python3 -c "\
 import re;\
 p='/opt/ros/jazzy/share/nav2_minimal_tb4_description/urdf/sensors/oakd.urdf.xacro';\
@@ -58,10 +58,39 @@ s=open(p).read();\
 s=re.sub(r'<sensor name=\"rgbd_camera\"[^<]*(?:<[^/][^>]*>.*?</[^>]+>\s*)+</sensor>', '<!-- rgbd_camera disabled -->', s, flags=re.DOTALL);\
 open(p,'w').write(s)"
 
-RUN useradd -m -s /bin/bash -u 1001 ros
+# Match the container's ros user UID/GID to the host (set in docker/.env).
+# Without this, files written by the container into bind-mounted host
+# directories (./results, ws/src) are owned by a stranger UID and the host
+# user can't manage them.
+#
+# The ros:jazzy-ros-base image already ships with `ubuntu:ubuntu` at
+# UID/GID 1000, so we rename that user/group instead of creating a fresh
+# one — `useradd` would collide with the existing IDs.
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN set -eux; \
+    if getent group ${USER_GID} >/dev/null; then \
+        existing_group=$(getent group ${USER_GID} | cut -d: -f1); \
+        [ "$existing_group" != "ros" ] && groupmod -n ros "$existing_group" || true; \
+    else \
+        groupadd -g ${USER_GID} ros; \
+    fi; \
+    if getent passwd ${USER_UID} >/dev/null; then \
+        existing_user=$(getent passwd ${USER_UID} | cut -d: -f1); \
+        if [ "$existing_user" != "ros" ]; then \
+            usermod -l ros -d /home/ros -m -s /bin/bash "$existing_user"; \
+        fi; \
+    else \
+        useradd -m -s /bin/bash -u ${USER_UID} -g ${USER_GID} ros; \
+    fi
 USER ros
 WORKDIR /home/ros
-RUN mkdir -p /home/ros/ws/src /home/ros/.gz
+# Pre-create the ws subdirs that named volumes will be mounted on. Docker
+# creates volume mountpoints as root when the path doesn't already exist;
+# pre-creating them as the ros user lets named volumes inherit ros ownership
+# on first mount, so colcon can write build/install/log without sudo.
+RUN mkdir -p /home/ros/ws/src /home/ros/ws/build /home/ros/ws/install \
+             /home/ros/ws/log /home/ros/.gz /home/ros/results
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc && \
     echo "[ -f /home/ros/ws/install/setup.bash ] && source /home/ros/ws/install/setup.bash" >> /home/ros/.bashrc && \

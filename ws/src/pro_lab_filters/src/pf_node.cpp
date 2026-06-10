@@ -1,4 +1,4 @@
-// ROS2 wrapper for PF. Inputs: /cmd_vel, /imu, /pose, /map, /scan.
+// ROS2 wrapper for PF. Inputs: /cmd_vel, /imu, /map, /scan.
 // Outputs: /pf/pose, /pf/particles (PoseArray), /pf/ess (Float64).
 //
 // Wrong-init experiment knobs:
@@ -50,8 +50,6 @@ public:
     declare_parameter("motion_noise_v", 0.05);
     declare_parameter("motion_noise_w", 0.05);
     declare_parameter("r_yaw_imu", 0.05);
-    declare_parameter("r_pose_xy", 0.05);
-    declare_parameter("r_pose_yaw", 0.05);
     declare_parameter("frame_id", std::string("odom"));
     declare_parameter("publish_particles", true);
     declare_parameter("rng_seed", 42);
@@ -76,6 +74,10 @@ public:
     declare_parameter("alpha4", 0.2);
     declare_parameter("alpha5", 0.2);
     declare_parameter("alpha6", 0.2);
+    // Augmented-MCL random-particle injection. OFF by default — only useful
+    // for global/kidnap recovery; during normal driving it scatters particles
+    // across the map and the estimate diverges. Enable in kidnapped.yaml.
+    declare_parameter("use_augmented_mcl", false);
     // Beam skip
     declare_parameter("do_beamskip",                false);
     declare_parameter("beam_skip_distance",         0.5);
@@ -125,6 +127,7 @@ public:
         get_parameter("alpha1").as_double(), get_parameter("alpha2").as_double(),
         get_parameter("alpha3").as_double(), get_parameter("alpha4").as_double(),
         get_parameter("alpha5").as_double(), get_parameter("alpha6").as_double());
+    pf_.enableAugmentedMcl(get_parameter("use_augmented_mcl").as_bool());
     if (get_parameter("do_beamskip").as_bool()) {
       pf_.setBeamSkip(true,
         get_parameter("beam_skip_distance").as_double(),
@@ -145,10 +148,7 @@ public:
     }
 
     r_yaw_imu_ = get_parameter("r_yaw_imu").as_double();
-    r_pose_diag_ << get_parameter("r_pose_xy").as_double(),
-                    get_parameter("r_pose_xy").as_double(),
-                    get_parameter("r_pose_yaw").as_double();
-    frame_id_ = get_parameter("frame_id").as_string();
+    frame_id_  = get_parameter("frame_id").as_string();
     publish_particles_ = get_parameter("publish_particles").as_bool();
 
     cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
@@ -161,13 +161,7 @@ public:
       [this](sensor_msgs::msg::Imu::SharedPtr m) {
         pf_.updateImuYaw(pro_lab_filters::quat_to_yaw(m->orientation), r_yaw_imu_);
       });
-    pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-      "/pose", 10,
-      [this](geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr m) {
-        double yaw = pro_lab_filters::quat_to_yaw(m->pose.pose.orientation);
-        pf_.updatePose(m->pose.pose.position.x, m->pose.pose.position.y, yaw, r_pose_diag_);
-      });
-    // AMCL-style global reinit. Foxglove's built-in "Pose Estimate" tool
+    // AMCL-style global reinit. RViz's built-in "2D Pose Estimate" tool
     // publishes here. This ONLY re-seeds the PF — it does not move the GZ
     // model. The robot_teleporter listens on /kidnap_pose instead, so the
     // two experiments stay independent.
@@ -343,10 +337,11 @@ private:
     const auto t_start = std::chrono::steady_clock::now();
     if (dt > 0) pf_.predict(v_, w_, dt);
 
-    auto x   = pf_.estimate();
-    auto var = pf_.variance();
-    pose_pub_->publish(pro_lab_filters::make_pose(now, frame_id_,
-        x(0), x(1), x(2), var(0), var(2)));
+    auto x    = pf_.estimate();
+    auto C    = pf_.covarianceXY();
+    auto vyaw = pf_.variance()(2);
+    pose_pub_->publish(pro_lab_filters::make_pose_xy(now, frame_id_,
+        x(0), x(1), x(2), C(0, 0), C(1, 1), C(0, 1), vyaw));
 
     if (particles_pub_) {
       geometry_msgs::msg::PoseArray pa;
@@ -380,13 +375,11 @@ private:
   double last_t_ = 0.0;
   bool have_last_ = false;
   double r_yaw_imu_ = 0.05;
-  Eigen::Vector3d r_pose_diag_{0.05, 0.05, 0.05};
   std::string frame_id_;
   bool publish_particles_ = true;
 
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initpose_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr      map_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr       scan_sub_;

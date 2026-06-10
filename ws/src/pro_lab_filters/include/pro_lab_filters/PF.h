@@ -249,29 +249,33 @@ public:
     }
     (void)n_beams_d;
 
-    // For augmented-MCL: use the *absolute* per-beam geometric-mean
-    // likelihood (NOT max-normalised), so it drops when every particle
-    // is equally bad — exactly the post-kidnap signal. logw[i] / n_beams
-    // is the per-beam log-likelihood; exp(...) is its geometric mean.
-    double w_avg = 0.0;
-    double sum   = 0.0;
+    double sum = 0.0;
     for (std::size_t i = 0; i < N_; ++i) {
       const double w = std::exp(logw[i] - maxlog);
       weights_[i] *= w;
       sum += weights_[i];
-      w_avg += std::exp(logw[i] / std::max(1.0, n_beams));
     }
-    w_avg /= static_cast<double>(N_);
 
-    if (w_slow_ == 0.0) { w_slow_ = w_avg; }
-    if (w_fast_ == 0.0) { w_fast_ = w_avg; }
-    w_slow_ += alpha_slow_ * (w_avg - w_slow_);
-    w_fast_ += alpha_fast_ * (w_avg - w_fast_);
-    // Cap injection at 0.3 (standard AMCL): too high and the cluster of
-    // good particles never gets a chance to dominate, so the estimate
-    // jitters between random spots forever instead of converging.
-    inject_prob_ = std::clamp(1.0 - w_fast_ / std::max(w_slow_, 1e-12),
-                              0.0, 0.30);
+    // Augmented-MCL random-particle injection — OPT-IN (kidnap recovery only).
+    // It tracks the short/long-term average per-beam geometric-mean likelihood
+    // and injects uniform particles across the whole map when the scan stops
+    // matching. Disabled by default: during normal driving the likelihood
+    // fluctuates (the robot sees new parts of the map), which would otherwise
+    // raise inject_prob_ and scatter particles across the large warehouse,
+    // dragging the weighted-mean estimate away from truth (PF "divergence"
+    // with a deceptively healthy ESS, since resampling resets weights).
+    if (aug_mcl_enabled_) {
+      double w_avg = 0.0;
+      for (std::size_t i = 0; i < N_; ++i)
+        w_avg += std::exp(logw[i] / std::max(1.0, n_beams));
+      w_avg /= static_cast<double>(N_);
+      if (w_slow_ == 0.0) { w_slow_ = w_avg; }
+      if (w_fast_ == 0.0) { w_fast_ = w_avg; }
+      w_slow_ += alpha_slow_ * (w_avg - w_slow_);
+      w_fast_ += alpha_fast_ * (w_avg - w_fast_);
+      inject_prob_ = std::clamp(1.0 - w_fast_ / std::max(w_slow_, 1e-12),
+                                0.0, 0.30);
+    }
 
     normalizeOrResetWeights(sum);
     maybeResample();
@@ -302,6 +306,22 @@ public:
     return Vec3(vx, vy, vyaw);
   }
 
+  // Full XY covariance including cross-term so RViz can render the actual
+  // particle-cloud ellipse instead of an axis-aligned circle.
+  Eigen::Matrix2d covarianceXY() const {
+    Vec3 mean = estimate();
+    Eigen::Matrix2d C = Eigen::Matrix2d::Zero();
+    for (std::size_t i = 0; i < N_; ++i) {
+      double dx = particles_[i](0) - mean(0);
+      double dy = particles_[i](1) - mean(1);
+      C(0, 0) += weights_[i] * dx * dx;
+      C(1, 1) += weights_[i] * dy * dy;
+      C(0, 1) += weights_[i] * dx * dy;
+    }
+    C(1, 0) = C(0, 1);
+    return C;
+  }
+
   // Effective Sample Size: 1 / sum(w_i^2). Drops as particles concentrate;
   // hits ~1 (all weight on one particle) for a degenerate filter.
   double ess() const {
@@ -325,6 +345,10 @@ public:
     alpha_slow_ = alpha_slow;
     alpha_fast_ = alpha_fast;
   }
+  // Enable random-particle injection for global/kidnap recovery. OFF by
+  // default — see updateScan(): on during normal motion it scatters particles
+  // across the map and the estimate diverges.
+  void enableAugmentedMcl(bool on) { aug_mcl_enabled_ = on; }
   double injectProbability() const { return inject_prob_; }
 
   void setBeamSkip(bool on, double dist = 0.5, double thresh = 0.3,
@@ -511,6 +535,7 @@ public:
   PFInitMode init_mode_ = PFInitMode::Gaussian;
 
   // Augmented-MCL state
+  bool   aug_mcl_enabled_ = false;
   double alpha_slow_ = 0.001;
   double alpha_fast_ = 0.10;
   double w_slow_     = 0.0;

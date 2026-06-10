@@ -1,12 +1,12 @@
 # Right pose, huge uncertainty. Should converge — but slowly for the
 # parametric filters because their initial covariance is so large that early
 # innovations barely move the mean.
-# Truth spawn: (-8.0, -0.5, yaw=0).
+# Truth spawn: (0.0, 0.0, yaw=0). Mean is at truth, just a huge uncertainty.
 /**:
   ros__parameters:
     init_distribution: gaussian
-    init_x:       -8.00
-    init_y:       -0.50
+    init_x:        0.00
+    init_y:        0.00
     init_yaw:      0.00
     init_spread_xy:  3.0
     init_spread_yaw: 1.5

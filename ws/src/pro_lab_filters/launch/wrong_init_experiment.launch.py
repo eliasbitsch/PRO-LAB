@@ -3,7 +3,7 @@
 Runs the simulation + all 3 filters + truth relay + metrics + CSV logger
 under a chosen scenario YAML. Optionally auto-shuts-down after `duration_s`.
 
-Both visualizers (RViz + Foxglove bridge) are started — connect either or both.
+Visualization: RViz only.
 
 Usage:
     ros2 launch pro_lab_filters wrong_init_experiment.launch.py \\
@@ -19,7 +19,7 @@ from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
                             ExecuteProcess, TimerAction, RegisterEventHandler,
                             OpaqueFunction, Shutdown)
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (Command, LaunchConfiguration,
@@ -43,10 +43,12 @@ def generate_launch_description():
     yaw        = LaunchConfiguration('yaw')
     map_yaml   = LaunchConfiguration('map')
     use_rviz   = LaunchConfiguration('use_rviz')
-    use_foxglove = LaunchConfiguration('use_foxglove')
     use_nav2   = LaunchConfiguration('use_nav2')
+    use_amcl   = LaunchConfiguration('use_amcl')
+    use_traj   = LaunchConfiguration('use_trajectory')
     start_gz   = LaunchConfiguration('start_gz')
     filter_sel = LaunchConfiguration('filter')
+    seed       = LaunchConfiguration('seed')
 
     args = [
         DeclareLaunchArgument('scenario',   default_value='correct_init'),
@@ -54,37 +56,86 @@ def generate_launch_description():
                               description='Auto-shutdown after N seconds. 0 = run forever.'),
         DeclareLaunchArgument('out_dir',    default_value='/tmp/pro_lab_results'),
         DeclareLaunchArgument('world',      default_value='warehouse'),
-        # Defaults match nav2_minimal_tb4_sim's warehouse map origin so
-        # /scan aligns with /map. Override these in scenario YAMLs (init_x
-        # /init_y/init_yaw) to study wrong-init recovery.
-        DeclareLaunchArgument('x_pose',     default_value='-8.00'),
-        DeclareLaunchArgument('y_pose',     default_value='-0.50'),
-        DeclareLaunchArgument('yaw',        default_value='0.0'),
+        # Spawn pose in world coords. map->odom is offset by this (see below)
+        # so `map` coincides with the world frame and /scan aligns with /map.
+        # Scenario YAMLs (init_x/init_y/init_yaw) start the filters here too.
+        # The warehouse occupancy map matches the warehouse world (unlike the
+        # available depot map, which is incomplete) → clean scan-vs-map.
+        DeclareLaunchArgument('x_pose',     default_value='0.00'),
+        DeclareLaunchArgument('y_pose',     default_value='0.00'),
+        DeclareLaunchArgument('yaw',        default_value='0.0'),      # face +x (east) — IMU-aligned, avoids filter init issues
         DeclareLaunchArgument('map',
                               default_value=os.path.join(nav2_bringup, 'maps', 'warehouse.yaml')),
         DeclareLaunchArgument('use_rviz',     default_value='true'),
-        DeclareLaunchArgument('use_foxglove', default_value='true'),
         DeclareLaunchArgument('use_nav2',     default_value='true'),
+        DeclareLaunchArgument('use_amcl',     default_value='true',
+                              description='Run AMCL as 4th comparison baseline '
+                                          '(relays /amcl_pose -> /amcl/pose). '
+                                          'Requires use_nav2=true.'),
+        DeclareLaunchArgument('use_trajectory', default_value='true',
+                              description='Run scripted trajectory_player so every '
+                                          'run drives the same path. Disable for '
+                                          'manual teleop debugging.'),
         DeclareLaunchArgument('filter',       default_value='all',
-            description='Which estimator(s) to run: kf | ekf | pf | all'),
-        DeclareLaunchArgument('start_gz',     default_value='false',
-                              description='Start headless gz server inside the container. '
-                                          'Set false when gz sim is already running natively '
-                                          '(GPU mode in WSL).'),
+            description='Which estimator(s) to run: kf | ekf | ekf_lf | pf | all'),
+        DeclareLaunchArgument('seed',         default_value='0',
+            description='Random seed for filter init sampling and PF RNG. '
+                        '0 = deterministic (single-run baseline). '
+                        '>0 enables Gaussian sampling around init_x/y/yaw '
+                        'using init_spread_xy/yaw — used for 10-run sweeps.'),
+        DeclareLaunchArgument('gz_gui',       default_value='true',
+                              description='Show the Gazebo GUI window. Set false for batch '
+                                          'runs (run_experiments.sh / wrong_init_batch.sh).'),
+        DeclareLaunchArgument('start_gz',     default_value='true',
+                              description='Start the headless gz server inside the container. '
+                                          'Set false only if a gz server is already running '
+                                          'externally on the same GZ_PARTITION.'),
     ]
 
     scenario_file = PathJoinSubstitution(
         [pkg_share, 'config', 'scenarios', [scenario, TextSubstitution(text='.yaml')]])
 
     # ── Simulation stack (gz + RSP + spawn) ──────────────────────────────
-    # gz_server is optional: when start_gz:=false, we expect a Gazebo server
-    # to be already running externally (e.g. natively in WSL with GPU access).
-    gz_server = ExecuteProcess(
-        cmd=['gz', 'sim', '-s', '-r', '-v', '3',
-             PathJoinSubstitution([sim_dir, 'worlds', [world, '.sdf']])],
-        output='screen',
-        condition=__import__('launch.conditions', fromlist=['IfCondition']).IfCondition(start_gz),
-    )
+    # Where the robot's GPU sensors (gpu_lidar/camera) render depends on the
+    # render API gz picks, which we split by run mode:
+    #
+    #   Batch / server-only (gz_gui:=false): we pass --headless-rendering so gz
+    #   renders the sensors offscreen via *EGL*. The EGL vendor is pinned to the
+    #   NVIDIA dGPU in docker-compose (__EGL_VENDOR_LIBRARY_FILENAMES), so the
+    #   gpu_lidar raycasting runs on the RTX (verified: gz appears as a graphics
+    #   process on the NVIDIA in nvidia-smi). Without the flag gz falls back to
+    #   GLX on DISPLAY=:1 and renders on the Mesa/iGPU path instead — slower and
+    #   not what we want for the sweeps.
+    #
+    #   Interactive / with GUI (gz_gui:=true): the GUI window uses *GLX* on the
+    #   host X server (DISPLAY), routed via XWayland. We must NOT force the
+    #   NVIDIA GLX vendor here (yields GLXBadFBConfig under XWayland and gz
+    #   crashes), so the GUI path stays on the default GLX backend. Needs
+    #   `xhost +local:` on the host once.
+    #
+    # The world file is chosen at runtime: for `depot` we use our own
+    # config/depot.sdf (the upstream one gates SceneBroadcaster behind xacro,
+    # which gz can't expand → empty GUI); other worlds load from the sim share.
+    def make_gz_server(context, *a, **k):
+        if context.launch_configurations.get('start_gz', 'true') != 'true':
+            return []
+        w = context.launch_configurations.get('world', 'depot')
+        if w == 'depot':
+            world_file = os.path.join(pkg_share, 'config', 'depot.sdf')
+        else:
+            world_file = os.path.join(sim_dir, 'worlds', w + '.sdf')
+        # `-s` = server-only (headless), no `-s` = also start the Gazebo GUI.
+        # Default on for interactive runs; batch scripts pass gz_gui:=false.
+        # Server-only also gets --headless-rendering so sensor rendering goes
+        # through EGL (pinned to the NVIDIA dGPU) rather than GLX on the iGPU.
+        gz_gui = context.launch_configurations.get('gz_gui', 'true') == 'true'
+        if gz_gui:
+            cmd = ['gz', 'sim', '-r', '-v', '3', world_file]
+        else:
+            cmd = ['gz', 'sim', '-s', '-r', '--headless-rendering',
+                   '-v', '3', world_file]
+        return [ExecuteProcess(cmd=cmd, output='screen')]
+    gz_server = OpaqueFunction(function=make_gz_server)
 
     urdf_xacro = PathJoinSubstitution(
         [FindPackageShare('nav2_minimal_tb4_description'),
@@ -108,6 +159,44 @@ def generate_launch_description():
         )
     ])
 
+    # Physical landmark posts (cylinders) the lidar can actually see, so the
+    # scan-cluster landmark_detector has real returns to cluster. Coordinates
+    # match config/landmarks.yaml. Spawned after the world + robot are up.
+    post_sdf = os.path.join(pkg_share, 'config', 'landmark_post.sdf')
+    # Compact triangle bracketing the driven path (spawn -8,-0.5 → stop -6,1):
+    # one NE, one S, one N. Close together (~2.5 m spread) so the trajectory +
+    # covariance plot is tightly framed, and close to the path so every pose —
+    # including the final stop — sees a post and the landmark-based KF/EKF keep
+    # getting corrections instead of dead-reckoning away.
+    # ALL real warehouse pillars auto-discovered from the occupancy map.
+    # Spawning our thick I-beams here overlays them on the map's existing
+    # structure → scan-based filters see no mismatch, landmark filters get
+    # many anchors → richer triangulation, more robust to occlusion.
+    # All shifted -0.10 m in y to align with the real orange pillars
+    landmark_coords = [
+        (-7.45, -15.02), ( 7.49, -15.02),
+        (-7.42,  -7.55), ( 7.46,  -7.52),
+        (-7.51,  -0.02), ( 7.43,  -0.02),
+        (-7.45,   7.54), ( 7.43,   7.48),
+    ]
+    # Single source of truth for the landmark map. The DETECTOR associates
+    # clusters to these, and the landmark-based filters (KF/EKF) look up each
+    # observed id here to triangulate. They MUST match or the filters jump.
+    landmark_params = {
+        'landmark_ids': [i + 1 for i in range(len(landmark_coords))],
+        'landmark_xs':  [c[0] for c in landmark_coords],
+        'landmark_ys':  [c[1] for c in landmark_coords],
+    }
+    spawn_landmarks = TimerAction(period=7.0, actions=[
+        Node(package='ros_gz_sim', executable='create',
+             arguments=['-world', world, '-file', post_sdf,
+                        '-name', f'landmark_{i + 1}',
+                        '-x', f'{x}', '-y', f'{y}', '-z', '0',
+                        '-Y', '1.5708'],   # rotate 90° to align with real pillars
+             output='screen')
+        for i, (x, y) in enumerate(landmark_coords)
+    ])
+
     # ros_gz_bridge: maps gz topics (/cmd_vel, /imu, /odom, /scan, /tf, /clock)
     # to ROS so the filter nodes see them. Required whether gz runs inside the
     # container or natively in WSL.
@@ -121,7 +210,11 @@ def generate_launch_description():
         }],
     )
 
-    # ── Nav2 (optional — provides /pose via AMCL) ────────────────────────
+    # ── Nav2 (provides AMCL as external comparison track) ───────────────
+    # Filters do NOT consume /pose any more — KF/EKF/PF each have their own
+    # measurement channel (landmarks for KF/EKF, scan-likelihood for PF).
+    # AMCL runs solely so its output can be logged alongside the filters
+    # for the "our filters vs Nav2 standard" comparison plot.
     nav2 = TimerAction(period=8.0, actions=[
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -136,17 +229,23 @@ def generate_launch_description():
     ])
 
     # ── Standalone map_server so /map is always published ──────────────
-    # Even when Nav2 is disabled the user still wants the warehouse map as
-    # the 3D-panel background, so we always run a map_server + lifecycle
-    # auto-starter against the same warehouse.yaml that Nav2 uses.
-    map_yaml_path = PathJoinSubstitution(
-        [FindPackageShare('nav2_bringup'), 'maps', 'warehouse.yaml'])
+    # Even when Nav2 is disabled the filters (PF/EKF-LF) and RViz need /map.
+    # Uses the same `map` arg as Nav2 so it follows the selected world.
+    #
+    # IMPORTANT: when use_nav2:=true, nav2_bringup ALREADY starts its own
+    # map_server + lifecycle_manager_localization. Running this standalone
+    # pair in parallel causes the two lifecycle managers to race the same
+    # node, leaving map_server stuck in 'active' while bringup's manager
+    # tries to re-configure it → "Transition is not registered" → whole
+    # bringup aborts and AMCL never comes up (RMSE = NaN in the plots).
+    # So this standalone pair only fires when use_nav2:=false.
     map_server = Node(
         package='nav2_map_server',
         executable='map_server',
         name='map_server',
         output='screen',
-        parameters=[{'use_sim_time': True, 'yaml_filename': map_yaml_path}],
+        parameters=[{'use_sim_time': True, 'yaml_filename': map_yaml}],
+        condition=UnlessCondition(use_nav2),
     )
     map_lifecycle = Node(
         package='nav2_lifecycle_manager',
@@ -156,14 +255,15 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True,
                      'autostart': True,
                      'node_names': ['map_server']}],
+        condition=UnlessCondition(use_nav2),
     )
 
     # ── cmd_vel watchdog ────────────────────────────────────────────────
-    # Foxglove's Teleop panel only publishes while a key is held. On
-    # release it stops publishing — but Gazebo keeps applying the last
-    # twist forever. This relay forwards /cmd_vel_in (Teleop's output) to
-    # /cmd_vel and zeroes /cmd_vel after a short silence, so releasing the
-    # button actually stops the robot.
+    # The RViz teleop panel (and other key-hold publishers) only publish
+    # while a key is held. On release they stop publishing — but Gazebo
+    # keeps applying the last twist forever. This relay forwards
+    # /cmd_vel_in to /cmd_vel and zeroes /cmd_vel after a short silence,
+    # so releasing the button actually stops the robot.
     cmd_vel_watchdog = Node(
         package='pro_lab_filters',
         executable='cmd_vel_watchdog',
@@ -171,14 +271,18 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'timeout': 0.4,
+            # 2.0 s (was 0.4): the scripted trajectory_player publishes at 20 Hz,
+            # but under RViz/GUI load its wall-timer can be starved >0.4 s, which
+            # made the watchdog zero /cmd_vel and the robot froze after ~0.1 m.
+            # Teleop still stops promptly enough at 2 s.
+            'timeout': 2.0,
             'input_topic': '/cmd_vel_in',
             'output_topic': '/cmd_vel',
         }],
     )
 
-    # Live "kidnap" the robot: shift+click in Foxglove -> /initialpose
-    # -> robot_teleporter -> gz set_pose service -> robot jumps there.
+    # Live "kidnap" the robot: the RViz Kidnap tool publishes /initialpose,
+    # which robot_teleporter forwards to gz set_pose so the robot jumps there.
     robot_teleporter = Node(
         package='pro_lab_filters',
         executable='robot_teleporter',
@@ -204,48 +308,42 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'landmark_ids': [1, 2, 3],
-            'landmark_xs': [-5.0,  3.0, -2.0],
-            'landmark_ys': [ 2.0, -2.0, -6.0],
+            **landmark_params,
             'range_sigma':   0.10,
             'bearing_sigma': 0.05,
-            'max_range':     6.0,
+            'max_range':    10.0,
             'frame_id':      'map',
             'rate_hz':       5.0,
         }],
     )
 
-    # Drag-to-drive interactive marker (RViz-side teleop).
-    teleop_marker = Node(
-        package='pro_lab_filters',
-        executable='teleop_marker_node',
-        name='teleop_marker',
-        output='screen',
-        parameters=[{
-            'use_sim_time': True,
-            'base_frame': 'base_footprint',
-        }],
-    )
+    # Filter selector — defined here so the conditional map_odom_* nodes
+    # below can branch on which filter is active. Used again at the
+    # filter-node block for the actual KF/EKF/PF instantiation.
+    run_kf     = PythonExpression(["'", filter_sel, "' in ('kf',     'all')"])
+    run_ekf    = PythonExpression(["'", filter_sel, "' in ('ekf',    'all')"])
+    run_ekf_lf = PythonExpression(["'", filter_sel, "' in ('ekf_lf', 'all')"])
+    run_pf     = PythonExpression(["'", filter_sel, "' in ('pf',     'all')"])
 
-    # Periodically rebroadcast /map on /map_repub so Foxglove always sees it.
-    map_republisher = Node(
-        package='pro_lab_filters',
-        executable='map_republisher',
-        name='map_republisher',
+    # ── Ground-truth map -> odom transform ──────────────────────────────
+    # gz anchors the odom frame at the robot's SPAWN pose (odom->base == 0 at
+    # spawn), NOT at the world origin. To make `map` coincide with the world
+    # frame we offset map->odom by the spawn pose (x_pose, y_pose). Then
+    # map->base_footprint == the robot's true WORLD pose — which is what
+    # truth_relay reads and what every filter is initialised in (init_x/y from
+    # the scenario YAML are world coords). This is a FIXED ground-truth
+    # transform (not the PF estimate), so the truth reference is independent of
+    # any filter — essential for a fair wrong-init comparison.
+    map_odom_static = Node(
+        package='tf2_ros', executable='static_transform_publisher',
+        name='map_odom_static',
+        arguments=[x_pose, y_pose, '0', yaw, '0', '0', 'map', 'odom'],
+        parameters=[{'use_sim_time': True}],
         output='screen',
-        parameters=[{
-            'use_sim_time': True,
-            'input_topic': '/map',
-            'output_topic': '/map_repub',
-            'rate_hz': 0.2,
-        }],
     )
-
-    # ── Dynamic map -> odom driven by the PF estimate (AMCL-style) ─────
-    # The PF publishes its best-estimate pose in the map frame. We compute
-    # map_T_odom = pf_pose * inv(odom_T_base) and broadcast it on /tf so
-    # the laser scan and other map-frame visualisations stay aligned with
-    # the warehouse walls even after teleporting (kidnapping).
+    # PF-driven dynamic map->odom is disabled: the eval compares every filter
+    # against the fixed ground-truth pose above, so map->odom must not depend on
+    # the PF estimate. (Kept for reference; condition never fires.)
     map_odom_tf = Node(
         package='pro_lab_filters',
         executable='map_odom_tf_publisher',
@@ -258,9 +356,10 @@ def generate_launch_description():
             'odom_frame':  'odom',
             'base_frame':  'base_footprint',
         }],
+        condition=IfCondition('false'),
     )
 
-    # ── Visualizers (both, in parallel) ──────────────────────────────────
+    # ── Visualizer ───────────────────────────────────────────────────────
     rviz = Node(
         package='rviz2', executable='rviz2',
         arguments=['-d', os.path.join(pkg_share, 'config', 'wrong_init.rviz')],
@@ -268,61 +367,131 @@ def generate_launch_description():
         output='screen',
         condition=__import__('launch.conditions', fromlist=['IfCondition']).IfCondition(use_rviz),
     )
-    # Foxglove bridge: open Foxglove Studio (web or desktop), connect to
-    # ws://localhost:8765, then load config/foxglove_layout.json.
-    foxglove = Node(
-        package='foxglove_bridge', executable='foxglove_bridge',
-        parameters=[{'use_sim_time': True, 'port': 8765, 'address': '0.0.0.0',
-                     'max_qos_depth': 25, 'send_buffer_limit': 10000000}],
-        output='screen',
-        condition=__import__('launch.conditions', fromlist=['IfCondition']).IfCondition(use_foxglove),
-    )
 
     # ── Filters: each loads the same scenario YAML so init_x/spread/etc.
     #    are consistent across KF, EKF, PF. The `filter` launch arg gates
     #    which one(s) actually run, so single-filter testing is one CLI
     #    flag away (kf_only.launch.py / ekf_only.launch.py / pf_only.launch.py
     #    are thin wrappers around this).
-    run_kf  = PythonExpression(["'", filter_sel, "' in ('kf',  'all')"])
-    run_ekf = PythonExpression(["'", filter_sel, "' in ('ekf', 'all')"])
-    run_pf  = PythonExpression(["'", filter_sel, "' in ('pf',  'all')"])
-
     kf  = Node(package='pro_lab_filters', executable='kf_node',  name='kf_node',
-               parameters=[scenario_file, {'frame_id': 'odom', 'use_sim_time': True}],
+               parameters=[scenario_file, {'frame_id': 'map',
+                                           'use_sim_time': True,
+                                           'rng_seed': seed,
+                                           **landmark_params}],
                output='screen', condition=IfCondition(run_kf))
     ekf = Node(package='pro_lab_filters', executable='ekf_node', name='ekf_node',
-               parameters=[scenario_file, {'frame_id': 'odom', 'use_sim_time': True}],
+               parameters=[scenario_file, {'frame_id': 'map',
+                                           'use_sim_time': True,
+                                           'rng_seed': seed,
+                                           **landmark_params}],
                output='screen', condition=IfCondition(run_ekf))
+    # EKF-LF: advanced variant with direct scan-likelihood update. Frame is
+    # 'map' because corrections come from the warehouse map directly, not
+    # AMCL-on-odom.
+    ekf_lf = Node(package='pro_lab_filters', executable='ekf_lf_node',
+                  name='ekf_lf_node',
+                  parameters=[scenario_file, {'frame_id': 'map',
+                                              'use_sim_time': True,
+                                              'rng_seed': seed}],
+                  output='screen', condition=IfCondition(run_ekf_lf))
     pf  = Node(package='pro_lab_filters', executable='pf_node',  name='pf_node',
                parameters=[scenario_file, {'frame_id': 'map', 'use_sim_time': True,
-                                           'publish_particles': True}],
+                                           'publish_particles': True,
+                                           'rng_seed': seed}],
                output='screen', condition=IfCondition(run_pf))
 
+    # AMCL is the gold-standard baseline. nav2_amcl publishes /amcl_pose;
+    # we relay it onto /amcl/pose so metrics_node and csv_logger can treat
+    # it like any other filter (subscribed under /<name>/pose convention).
+    # topic_tools/relay isn't packaged for ros-jazzy on this container,
+    # so we ship a 20-line Python equivalent in scripts/amcl_relay.py.
+    amcl_relay = Node(
+        package='pro_lab_filters', executable='amcl_relay.py', name='amcl_relay',
+        condition=IfCondition(use_amcl),
+        parameters=[{'use_sim_time': True}],
+        output='screen',
+    )
+    # AMCL doesn't localise until it receives an /initialpose. We publish one
+    # shot from the scenario YAML so AMCL starts from the same (possibly
+    # wrong) pose as the in-house filters — that's the whole comparison.
+    amcl_init_pose = Node(
+        package='pro_lab_filters', executable='amcl_init_pose.py',
+        name='amcl_init_pose',
+        parameters=[scenario_file, {'use_sim_time': True, 'frame_id': 'map'}],
+        condition=IfCondition(use_amcl),
+        output='screen',
+    )
+    # Reproducible kidnap events for headless batches. Reads kidnap_schedule
+    # from the scenario YAML; empty schedule is a no-op, so we can launch it
+    # unconditionally and only the `kidnapped` scenario actually triggers
+    # warps. start_delay_s matches trajectory_player so kidnap times are
+    # "seconds into scripted motion".
+    auto_kidnapper = Node(
+        package='pro_lab_filters', executable='auto_kidnapper.py',
+        name='auto_kidnapper',
+        parameters=[scenario_file, {
+            'use_sim_time': True,
+            'frame_id': 'map',
+            'start_delay_s': 14.0,
+        }],
+        output='screen',
+    )
+
+    # Scripted trajectory: deterministic varied path so every run is fair.
+    # start_delay_s gives Gazebo + filters time to come up before motion.
+    trajectory_player = Node(
+        package='pro_lab_filters', executable='trajectory_player_node',
+        name='trajectory_player',
+        parameters=[{
+            'use_sim_time': True,
+            'start_delay_s': 14.0,
+            'speed_scale':   1.0,
+            'publish_hz':    20.0,
+            'topic_in':      '/cmd_vel_in',
+            'topic_done':    '/trajectory/done',
+            'start_x':        0.00,    # warehouse spawn at origin — matches x_pose
+            'start_y':        0.00,    # matches y_pose default
+            'start_yaw':      0.00,    # face +x (east), matches yaw default
+            'planned_frame': 'map',
+        }],
+        condition=IfCondition(use_traj),
+        output='screen',
+    )
+
     # ── Truth + metrics + CSV logger ────────────────────────────────────
-    truth = Node(package='pro_lab_filters', executable='truth_relay_node',
-                 name='truth_relay',
+    # Truth via gz transport DIRECTLY (no ros_gz_bridge) because the bridge
+    # drops entity names when converting Pose_V -> TFMessage, leaving no way
+    # to filter the robot out of the dynamic_pose list (which also contains
+    # chairs and other moving entities). Critical for the kidnapped scenario
+    # where AMCL's map->odom flails and the old TF-based truth jumped wildly.
+    truth = Node(package='pro_lab_filters', executable='gz_truth_relay',
+                 name='gz_truth_relay',
                  parameters=[{'use_sim_time': True,
-                              'target_frame': 'odom',
-                              'source_frame': 'base_footprint',
-                              'publish_hz': 20.0,
-                              'topic': '/ground_truth/pose'}],
+                              'world':       'warehouse',
+                              'model_name':  'turtlebot4',
+                              'frame_id':    'map',
+                              'topic':       '/ground_truth/pose',
+                              'path_topic':  '/ground_truth/path'}],
                  output='screen')
     metrics = Node(package='pro_lab_filters', executable='metrics_node',
                    name='metrics_node',
                    parameters=[{'use_sim_time': True,
                                 'convergence_threshold_xy': 0.20,
                                 'convergence_window_s': 2.0,
-                                'filters': ['kf', 'ekf', 'pf']}],
+                                'filters': ['kf', 'ekf', 'ekf_lf', 'pf', 'amcl']}],
                    output='screen')
     csv_logger = Node(package='pro_lab_filters', executable='csv_logger.py',
                       name='csv_logger',
                       parameters=[{'use_sim_time': True,
                                    'scenario': scenario,
-                                   'out_dir': out_dir}],
+                                   'out_dir': out_dir,
+                                   'seed': seed,
+                                   'filters': ['kf', 'ekf', 'ekf_lf', 'pf', 'amcl']}],
                       output='screen')
 
     filters_group = TimerAction(period=10.0, actions=[
-        kf, ekf, pf, truth, metrics, csv_logger,
+        kf, ekf, ekf_lf, pf, amcl_relay, amcl_init_pose, auto_kidnapper, trajectory_player,
+        truth, metrics, csv_logger,
     ])
 
     # ── Optional auto-shutdown after duration_s seconds ─────────────────
@@ -336,9 +505,9 @@ def generate_launch_description():
         return [TimerAction(period=d, actions=[Shutdown(reason='duration elapsed')])]
 
     return LaunchDescription(
-        args + [gz_server, robot_state_pub, spawn, bridge, nav2,
-                map_server, map_lifecycle, map_odom_tf,
-                cmd_vel_watchdog, map_republisher, robot_teleporter,
-                teleop_marker, landmark_detector,
-                rviz, foxglove, filters_group,
+        args + [gz_server, robot_state_pub, spawn, spawn_landmarks, bridge, nav2,
+                map_server, map_lifecycle, map_odom_static, map_odom_tf,
+                cmd_vel_watchdog, robot_teleporter,
+                landmark_detector,
+                rviz, filters_group,
                 OpaqueFunction(function=maybe_shutdown)])

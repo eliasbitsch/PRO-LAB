@@ -12,9 +12,38 @@ captured, and how to reproduce the results.
 ## What we measure
 
 Each scenario starts the simulation with the robot at a known truth pose
-**(x=2.12, y=−21.3, yaw=1.57)** in the warehouse world. All three filters
-(KF, EKF, PF) are initialized **at the same pose** — the *believed* initial
-pose, which may or may not match the truth.
+**(x=−8.00, y=−0.50, yaw=0.0)** in the warehouse world. Five estimators run
+in parallel and start from the **same believed pose** which may or may not
+match the truth — the wrong-init experiment:
+
+| Estimator | State | Inputs | Notes |
+|---|---|---|---|
+| **KF**     | `[x, y, yaw, vx, vy, ω]` (6D) | /imu, /landmarks         | Constant-velocity model in world frame — predict + measurements all linear. /cmd_vel is *not* consumed (would be non-linear in yaw); velocities are learned passively from sequential landmark/IMU updates |
+| **EKF**    | `[x, y, yaw]` (3D)            | /cmd_vel, /imu, /landmarks | Textbook unicycle: non-linear predict around `cos(yaw)`, range/bearing landmark update via Jacobian |
+| **EKF-LF** | `[x, y, yaw]` (3D)            | /cmd_vel, /imu, /scan, /map | Advanced EKF variant — direct scan-likelihood update around the current estimate. Expected to fail under big init errors (linearisation outside its trust region) |
+| **PF**     | `[x, y, yaw]` (3D)            | /cmd_vel, /imu, /scan, /map | Full non-linear, non-Gaussian particle filter with augmented MCL + likelihood-field scan |
+| **AMCL**   | (Nav2 internal)               | (Nav2 internal)             | External comparison track — no filter consumes its output, it just runs alongside so we can plot "our filters vs Nav2 standard" |
+
+### Why different state dimensions per filter?
+
+Each filter uses the state representation that matches its mathematical assumptions:
+
+- **KF (6D)**: A linear KF requires `x' = F·x + w` with no products of state variables and no trig functions. The 3D unicycle predict `x' = x + v·cos(yaw)·dt` is non-linear in `yaw`, which would force an EKF. By promoting `(vx, vy, ω)` into the state — pure constant-velocity model in world frame — `F` becomes a constant 6×6 block-diagonal matrix and the filter stays *truly* linear. The price is no `/cmd_vel` consumption (body→world conversion is itself non-linear); the filter learns velocity from successive position updates.
+- **EKF / EKF-LF (3D)**: Can handle non-linearity via Jacobian, so the compact 3D unicycle state is natural. Uses `/cmd_vel` directly as control input.
+- **PF (3D)**: Compact state per particle (~500-3000 of them); non-linearity is handled by sampling, not linearisation. Same 3D unicycle as EKF.
+
+The KF can't take a raw scan because the scan-to-pose mapping is non-linear
+(small yaw changes redirect every beam). Triangulation sidesteps that:
+each visible landmark + the current yaw estimate gives a Cartesian position
+estimate; we average across visible landmarks and feed the result as one
+linear `(x, y)` measurement. EKF-LF shows what happens when you try to
+bypass that — it linearises the scan model directly and pays the price in
+wrong-init scenarios.
+
+To get statistical aussagekraft each scenario is run **10 times** with
+different random seeds (`scripts/run_experiments.sh --seeds 10`). The seed
+randomizes the filter's *sampled initial state* around `init_x/y/yaw` using
+`init_spread_xy/yaw`; the simulation itself is deterministic.
 
 We compare:
 
@@ -25,7 +54,9 @@ We compare:
 | `rmse_xy`, `rmse_yaw` | running RMSE up to time *t* |
 | `converged` | true once `error_xy < 0.20 m` for ≥ 2 s continuously |
 | `time_to_converge` | seconds from experiment start to first convergence |
+| `nees` | Normalized Estimation Error Squared — χ² consistency check; mean ≈ 3 (state dim) when filter is well-calibrated, much higher → overconfident |
 | `pf_ess` | PF effective sample size (1 / Σ wᵢ²) — collapses with degeneracy |
+| `runtime_us` | wall-clock per-tick cost (ties into "Runtime / Performance" comparison) |
 
 Truth is read from TF (`odom → base_footprint`) by `truth_relay_node` and
 republished as `/ground_truth/pose` (PoseStamped). The metrics node compares
@@ -71,7 +102,6 @@ Launch args:
 | `world`        | `warehouse` | gz world (warehouse / depot / maze) |
 | `x_pose`, `y_pose`, `yaw` | warehouse defaults | spawn pose (truth) |
 | `use_rviz`     | `true` | start RViz |
-| `use_foxglove` | `true` | start Foxglove bridge on :8765 |
 | `use_nav2`     | `true` | bring up Nav2 (provides `/pose` measurement) |
 
 Outputs in `out_dir`:
@@ -81,17 +111,48 @@ Outputs in `out_dir`:
 
 ---
 
-## Running all scenarios in one go
+## Running the full pipeline (scenarios × 10 seeds)
+
+The orchestrator at `scripts/run_experiments.sh` loops over every scenario
+and N seeds, spinning up Gazebo + all four estimators + the scripted
+trajectory_player + metrics + csv_logger for each run. Between runs it tears
+down and starts fresh so there's no state leakage.
 
 ```bash
-DURATION=60 RESULTS_DIR=/tmp/pro_lab_results \
-USE_RVIZ=false USE_FOXGLOVE=false \
-bash $(ros2 pkg prefix pro_lab_filters)/share/pro_lab_filters/../../lib/pro_lab_filters/run_wrong_init_batch.sh
+# default: 10 seeds × every scenario × 60 s, RViz visible
+bash scripts/run_experiments.sh
+
+# fewer seeds, single scenario, longer run
+bash scripts/run_experiments.sh --seeds 5 --scenario offset_5m --duration 90
+
+# headless (faster, no RViz window)
+bash scripts/run_experiments.sh --headless
 ```
 
-(or just `bash ws/src/pro_lab_filters/scripts/run_wrong_init_batch.sh`)
+Each run drops:
 
-The batch script prints a CSV summary of all scenarios at the end.
+- `<scenario>_seed<NN>_timeseries.csv` — per-tick truth, estimate, error, RMSE, NEES, ESS, runtime
+- `<scenario>_seed<NN>_summary.csv` — final RMSE, convergence flag, time-to-converge, runtime stats
+
+These land in `./results/` directly — `docker/docker-compose.yml` bind-mounts
+the host repo's `./results` to `/home/ros/results` inside the container, so
+no `docker cp` needed after a sweep. (If you reconfigure compose, recreate
+the container with `docker compose up -d --force-recreate` so the new mount
+takes effect.)
+
+Aggregate over seeds with `scripts/analyze_results.py` (mean ± std bars, per
+filter, per scenario).
+
+### Scripted trajectory
+
+A C++ node `trajectory_player_node` publishes a deterministic /cmd_vel
+sequence after a 14 s warm-up: straight → in-place left turn → arc-left →
+in-place right turn → arc-right → backward → 90° corners → figure-8. About
+43 s total, fits in the default 60 s window. Same trajectory for every run
+so the only thing that changes across seeds is the (wrong) initial state.
+
+Disable for manual teleop debugging via `use_trajectory:=false` on the launch
+file.
 
 ---
 
@@ -103,34 +164,16 @@ Launched automatically (unless `use_rviz:=false`). The bundled config
 [`config/wrong_init.rviz`](../ws/src/pro_lab_filters/config/wrong_init.rviz)
 shows:
 
-- Green axes → ground truth
-- Blue arrow → KF estimate
-- Greenish arrow → EKF estimate
-- Red arrow → PF estimate (with covariance ellipse)
-- Red flat arrows → PF particle cloud
-- Map (Nav2) + RobotModel + LaserScan
-
-### Foxglove Studio
-
-Launched automatically (unless `use_foxglove:=false`). The `foxglove_bridge`
-exposes `ws://<container-host>:8765`.
-
-1. Open Foxglove Studio (web at <https://app.foxglove.dev> or desktop).
-2. Add connection → Foxglove WebSocket → `ws://localhost:8765`.
-3. Layout → Import from file → pick
-   [`config/foxglove_layout.json`](../ws/src/pro_lab_filters/config/foxglove_layout.json).
-
-The pre-built layout includes:
-
-- 3D scene with truth (green) + KF/EKF/PF poses (with covariance) + particle cloud
-- Time-series plot of `error_xy` per filter (instant)
-- Time-series plot of running `rmse_xy` per filter
-- Time-series plot of `error_yaw` per filter
-- Time-series plot of PF Effective Sample Size
-- Three convergence-state indicators (KF / EKF / PF)
-- Gauge for PF time-to-converge
-
-Both UIs run in parallel — pick whichever you prefer for any moment.
+- TurtleBot4 RobotModel
+- Warehouse Map (Nav2) — `/map`
+- LaserScan — `/scan`
+- Green axes → ground truth (`/ground_truth/pose`)
+- Blue arrow + covariance ellipse → KF (`/kf/pose`)
+- Green-ish arrow + covariance ellipse → EKF (`/ekf/pose`)
+- Purple arrow + covariance ellipse → EKF-LF (`/ekf_lf/pose`)
+- Red arrow + covariance ellipse → PF (`/pf/pose`)
+- Yellow arrow + covariance ellipse → AMCL baseline (`/amcl/pose` relayed)
+- Red flat arrows → PF particle cloud (`/pf/particles`)
 
 ---
 
@@ -148,6 +191,11 @@ Both UIs run in parallel — pick whichever you prefer for any moment.
 5. **`overconfident_wrong`** — *headline result for this study*:
    - KF/EKF still converge eventually because the Kalman gain pulls the
      estimate toward each `/pose` update (asymptotically consistent).
+   - **EKF-LF diverges**: the Jacobian ∂z/∂x is computed at a pose that's
+     far from truth, so the gradient of the distance field at the predicted
+     beam endpoints points "away from" rather than "toward" the right
+     correction. Linearisation outside its trust region — exactly the
+     failure mode classic textbooks warn about (Thrun §7.4).
    - PF cannot recover: all particles are far from truth, every weight is
      ≈ 0, resampling perpetuates the wrong cloud → divergent or stuck. PF
      ESS drops to 1.
@@ -166,15 +214,20 @@ These hypotheses become the experimental analysis section of the paper.
 |---|---|
 | `ws/src/pro_lab_filters/include/pro_lab_filters/PF.h` | added Uniform init + ESS |
 | `ws/src/pro_lab_filters/src/pf_node.cpp` | publish `/pf/particles`, `/pf/ess`, init_distribution param |
+| `ws/src/pro_lab_filters/src/kf_node.cpp` | seed-based init sampling for 10-run sweeps |
+| `ws/src/pro_lab_filters/src/ekf_node.cpp` | seed-based init sampling, landmark fusion |
+| `ws/src/pro_lab_filters/src/ekf_lf_node.cpp` | EKF-LF: scan-likelihood update via shared LikelihoodField, direct /scan + /map consumption |
+| `ws/src/pro_lab_filters/include/pro_lab_filters/EKF.h` | added `updateScanLikelihood` (Probabilistic Robotics §7.4) |
+| `ws/src/pro_lab_filters/src/trajectory_player_node.cpp` | scripted /cmd_vel sequence |
 | `ws/src/pro_lab_filters/src/truth_relay_node.cpp` | TF → `/ground_truth/pose` |
-| `ws/src/pro_lab_filters/src/metrics_node.cpp` | per-filter error / RMSE / convergence |
-| `ws/src/pro_lab_filters/scripts/csv_logger.py` | CSV time-series + summary |
+| `ws/src/pro_lab_filters/src/metrics_node.cpp` | per-filter error / RMSE / convergence + NEES |
+| `ws/src/pro_lab_filters/scripts/csv_logger.py` | CSV time-series + summary, seed-suffixed |
 | `ws/src/pro_lab_filters/scripts/run_wrong_init_batch.sh` | batch driver |
 | `ws/src/pro_lab_filters/config/scenarios/*.yaml` | 7 scenarios |
-| `ws/src/pro_lab_filters/config/wrong_init.rviz` | RViz layout |
-| `ws/src/pro_lab_filters/config/foxglove_layout.json` | Foxglove Studio layout |
-| `ws/src/pro_lab_filters/launch/wrong_init_experiment.launch.py` | experiment launcher |
-| `ws/src/pro_lab_filters/launch/all_in_one.launch.py` | also starts foxglove_bridge |
-| `docker/Dockerfile` | adds `ros-jazzy-foxglove-bridge` |
+| `ws/src/pro_lab_filters/config/wrong_init.rviz` | RViz layout (TB4 + map + scan + 4 poses + cov ellipses + particles) |
+| `ws/src/pro_lab_filters/launch/wrong_init_experiment.launch.py` | experiment launcher (KF, EKF, PF, AMCL relay, trajectory_player, seed) |
+| `ws/src/pro_lab_filters/launch/all_in_one.launch.py` | single-container launch: Gazebo + bridge + Nav2 + RViz |
+| `scripts/run_experiments.sh` | top-level pipeline: scenarios × seeds, --headless toggle |
+| `docker/Dockerfile` | unified container: Gazebo + bridge + Nav2 + RViz + filters |
 | `ws/src/pro_lab_filters/CMakeLists.txt` | builds new executables |
-| `ws/src/pro_lab_filters/package.xml` | adds tf2_ros, rclpy, foxglove_bridge deps |
+| `ws/src/pro_lab_filters/package.xml` | adds tf2_ros, rclpy deps |

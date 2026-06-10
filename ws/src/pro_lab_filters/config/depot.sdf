@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!-- Depot world for the PRO-LAB sim. This is the nav2_minimal_tb4_sim depot
+     world but with the SceneBroadcaster plugin enabled UNCONDITIONALLY.
+     The upstream depot.sdf gates it behind `<xacro:unless headless>`, but gz
+     sim does not process xacro, so when the server runs headless (gz sim -s)
+     the scene is never broadcast and the GUI client (gz sim -g) stays empty.
+     Loading this copy instead fixes the empty Gazebo GUI. -->
+<sdf version="1.8" xmlns:experimental="http://sdformat.org/schemas/experimental">
+  <world name="depot">
+    <scene>
+      <ambient>1 1 1 1</ambient>
+      <grid>false</grid>
+    </scene>
+    <physics name="1ms" type="ode">
+      <max_step_size>0.003</max_step_size>
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
+        </collision>
+      </link>
+      <pose>0 0 0 0 0 0</pose>
+    </model>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Depot</uri>
+      <!-- Remove roof/fans so the robot is visible from above. -->
+      <experimental:params>
+        <visual element_id="Fan1::visual" action="remove"/>
+        <visual element_id="Fan2::visual" action="remove"/>
+        <visual element_id="main::ROOF_visual" action="remove"/>
+        <visual element_id="main::FANS_visual" action="remove"/>
+      </experimental:params>
+    </include>
+  </world>
+</sdf>

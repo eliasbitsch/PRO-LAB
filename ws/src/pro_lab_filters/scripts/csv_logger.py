@@ -32,7 +32,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from std_msgs.msg import Bool, Float64
+from std_msgs.msg import Bool, Float32MultiArray, Float64
 
 
 def quat_to_yaw(q) -> float:
@@ -42,18 +42,25 @@ def quat_to_yaw(q) -> float:
 
 
 class CsvLogger(Node):
-    FILTERS = ('kf', 'ekf', 'pf')
+    DEFAULT_FILTERS = ('kf', 'ekf', 'pf')
 
     def __init__(self):
         super().__init__('csv_logger')
         self.declare_parameter('scenario', 'unnamed')
         self.declare_parameter('out_dir', '/tmp/pro_lab_results')
         self.declare_parameter('flush_every', 10)
+        self.declare_parameter('seed', 0)
+        # Filters to log. AMCL is added when the launch enables use_amcl —
+        # /amcl_pose is relayed onto /amcl/pose so the same topic convention
+        # holds for every tracked estimator.
+        self.declare_parameter('filters', list(self.DEFAULT_FILTERS))
 
         self.scenario  = self.get_parameter('scenario').value
         self.out_dir   = Path(self.get_parameter('out_dir').value)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.flush_every = int(self.get_parameter('flush_every').value)
+        self.seed = int(self.get_parameter('seed').value)
+        self.FILTERS = tuple(self.get_parameter('filters').value)
 
         self._lock = threading.Lock()
         self._t0: Optional[float] = None
@@ -67,7 +74,10 @@ class CsvLogger(Node):
                              'runtime_max_us':  0.0,
                              'runtime_n':       0} for f in self.FILTERS}
 
-        ts_path = self.out_dir / f'{self.scenario}_timeseries.csv'
+        # Suffix the seed when one was passed so 10-run sweeps don't overwrite.
+        seed_suffix = f'_seed{self.seed:02d}' if self.seed > 0 else ''
+        self._seed_suffix = seed_suffix
+        ts_path = self.out_dir / f'{self.scenario}{seed_suffix}_timeseries.csv'
         self.get_logger().info(f'CSV logger writing to {ts_path}')
         self._ts_file = open(ts_path, 'w', newline='')
         cols = ['time', 'truth_x', 'truth_y', 'truth_yaw']
@@ -75,8 +85,10 @@ class CsvLogger(Node):
             cols += [f'{f}_x', f'{f}_y', f'{f}_yaw',
                      f'{f}_err_xy', f'{f}_err_yaw',
                      f'{f}_rmse_xy', f'{f}_rmse_yaw',
+                     f'{f}_nees',
+                     f'{f}_cov_xx', f'{f}_cov_yy', f'{f}_cov_xy',
                      f'{f}_runtime_us']
-        cols += ['pf_ess']
+        cols += ['pf_ess', 'n_landmarks_detected']
         self._ts_writer = csv.writer(self._ts_file)
         self._ts_writer.writerow(cols)
         self._row_count = 0
@@ -97,18 +109,29 @@ class CsvLogger(Node):
             self.create_subscription(
                 Float64, f'/metrics/{f}/error_yaw',
                 lambda m, k=f: self._set(f'{k}_err_yaw', m.data), qos)
+            # rmse_xy / rmse_yaw: latch the latest value into BOTH
+            #   * `_latest` so the timeseries column tracks the running RMSE
+            #     tick-by-tick (debuggable, plotable directly), and
+            #   * `_summary` so the final value lands in <scenario>_summary.csv
+            # Single source of truth: whatever metrics_node publishes.
+            def _set_both(filt: str, field: str, value: float):
+                self._set(f'{filt}_{field}', value)
+                self._set_summary(filt, field, value)
             self.create_subscription(
                 Float64, f'/metrics/{f}/rmse_xy',
-                lambda m, k=f: self._set_summary(k, 'rmse_xy', m.data), qos)
+                lambda m, k=f: _set_both(k, 'rmse_xy', m.data), qos)
             self.create_subscription(
                 Float64, f'/metrics/{f}/rmse_yaw',
-                lambda m, k=f: self._set_summary(k, 'rmse_yaw', m.data), qos)
+                lambda m, k=f: _set_both(k, 'rmse_yaw', m.data), qos)
             self.create_subscription(
                 Bool, f'/metrics/{f}/converged',
                 lambda m, k=f: self._set_summary(k, 'converged', m.data), qos)
             self.create_subscription(
                 Float64, f'/metrics/{f}/time_to_converge',
                 lambda m, k=f: self._set_summary(k, 'ttc', m.data), qos)
+            self.create_subscription(
+                Float64, f'/metrics/{f}/nees',
+                lambda m, k=f: self._set(f'{k}_nees', m.data), qos)
             # Per-filter runtime in microseconds, published by each filter
             # node from its tick(). Track the running mean + max for the
             # "Runtime / Performance" comparison in the paper.
@@ -117,6 +140,15 @@ class CsvLogger(Node):
                 lambda m, k=f: self._on_runtime(k, m.data), qos)
         self.create_subscription(Float64, '/pf/ess',
                                  lambda m: self._set('pf_ess', m.data), qos)
+        # /landmarks/observations is event-based (only published when the
+        # detector sees ≥1 landmark in this scan), and uses stride 3:
+        # [id, range, bearing, id, range, bearing, ...]. So the count is
+        # len(data) // 3. We latch the latest count so the periodic row
+        # writer sees it; we DON'T zero between events because that would
+        # under-count when logging hz > detection hz.
+        self.create_subscription(
+            Float32MultiArray, '/landmarks/observations',
+            lambda m: self._set('n_landmarks_detected', len(m.data) // 3), qos)
 
         # Periodically dump a row (triggered by metrics rate, not just on truth)
         self._timer = self.create_timer(0.05, self._maybe_write_row)
@@ -137,6 +169,11 @@ class CsvLogger(Node):
             self._latest[f'{key}_x']   = m.pose.pose.position.x
             self._latest[f'{key}_y']   = m.pose.pose.position.y
             self._latest[f'{key}_yaw'] = quat_to_yaw(m.pose.pose.orientation)
+            # Full 2D position covariance (row-major 6x6): [0]=Pxx, [7]=Pyy, [1]=Pxy.
+            # The plotter rebuilds the 2x2 to draw a true uncertainty ellipse.
+            self._latest[f'{key}_cov_xx'] = m.pose.covariance[0]
+            self._latest[f'{key}_cov_yy'] = m.pose.covariance[7]
+            self._latest[f'{key}_cov_xy'] = m.pose.covariance[1]
 
     def _set(self, key: str, value: float):
         with self._lock:
@@ -169,9 +206,12 @@ class CsvLogger(Node):
                 for k in ('x', 'y', 'yaw',
                           'err_xy', 'err_yaw',
                           'rmse_xy', 'rmse_yaw',
+                          'nees',
+                          'cov_xx', 'cov_yy', 'cov_xy',
                           'runtime_us'):
                     row.append(self._latest.get(f'{f}_{k}', float('nan')))
             row.append(self._latest.get('pf_ess', float('nan')))
+            row.append(self._latest.get('n_landmarks_detected', 0))
             self._ts_writer.writerow(row)
             self._row_count += 1
             if self._row_count % self.flush_every == 0:
@@ -179,17 +219,17 @@ class CsvLogger(Node):
 
     # ── shutdown: write summary CSV ───────────────────────────────────────
     def write_summary(self):
-        sum_path = self.out_dir / f'{self.scenario}_summary.csv'
+        sum_path = self.out_dir / f'{self.scenario}{self._seed_suffix}_summary.csv'
         with open(sum_path, 'w', newline='') as f:
             w = csv.writer(f)
-            cols = ['scenario', 'duration_s']
+            cols = ['scenario', 'seed', 'duration_s']
             for fn in self.FILTERS:
                 cols += [f'{fn}_final_rmse_xy', f'{fn}_final_rmse_yaw',
                          f'{fn}_converged', f'{fn}_time_to_converge',
                          f'{fn}_runtime_mean_us', f'{fn}_runtime_max_us']
             w.writerow(cols)
             duration = self._latest.get('time', float('nan'))
-            row = [self.scenario, duration]
+            row = [self.scenario, self.seed, duration]
             for fn in self.FILTERS:
                 s = self._summary[fn]
                 row += [s['rmse_xy'], s['rmse_yaw'],

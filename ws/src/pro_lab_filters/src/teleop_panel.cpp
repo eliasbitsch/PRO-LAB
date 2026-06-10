@@ -2,14 +2,23 @@
 
 #include <cmath>
 
+#include <QApplication>
 #include <QBrush>
 #include <QColor>
+#include <QComboBox>
+#include <QEvent>
 #include <QFont>
+#include <QKeyEvent>
+#include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QPlainTextEdit>
+#include <QSpinBox>
 #include <QString>
+#include <QTextEdit>
 #include <QVBoxLayout>
+#include <QWidget>
 
 namespace pro_lab_rviz {
 
@@ -111,7 +120,7 @@ void TeleopPad::mouseReleaseEvent(QMouseEvent *) {
 
 void TeleopPad::mouseMoveEvent(QMouseEvent * e) {
   // While left button is held, dragging between sectors switches direction;
-  // dragging into the dead band stops the robot. Mirrors Foxglove's behaviour.
+  // dragging into the dead band stops the robot.
   if (e->buttons() & Qt::LeftButton) {
     setSector(hitTest(e->pos()));
   }
@@ -191,6 +200,12 @@ TeleopPanel::TeleopPanel(QWidget * parent) : rviz_common::Panel(parent) {
   connect(timer_, &QTimer::timeout, this, &TeleopPanel::publishTick);
 }
 
+TeleopPanel::~TeleopPanel() {
+  if (qApp) {
+    qApp->removeEventFilter(this);
+  }
+}
+
 void TeleopPanel::onInitialize() {
   // Self-owned rclcpp node — borrowing RViz's shared node via
   // getRosNodeAbstraction() races with RViz init on some Jazzy builds and
@@ -203,6 +218,109 @@ void TeleopPanel::onInitialize() {
   pub_  = node_->create_publisher<geometry_msgs::msg::Twist>(
       "/cmd_vel_in", rclcpp::QoS(10));
   timer_->start(50);  // 20 Hz
+
+  // Global key handler: works no matter which RViz panel has focus. We
+  // install on qApp instead of binding QShortcut so the key-release event
+  // is observable (releasing the arrow stops the robot, matching the
+  // dpad's press-and-hold semantics).
+  if (qApp) {
+    qApp->installEventFilter(this);
+  }
+}
+
+namespace {
+// Skip the global key filter when the user is typing into a text input —
+// otherwise arrow keys would steal focus from line edits / spin boxes /
+// combos in RViz config dialogs.
+bool focusIsTextInput() {
+  QWidget * f = QApplication::focusWidget();
+  if (!f) {
+    return false;
+  }
+  if (qobject_cast<QLineEdit *>(f) || qobject_cast<QTextEdit *>(f) ||
+      qobject_cast<QPlainTextEdit *>(f) || qobject_cast<QComboBox *>(f) ||
+      qobject_cast<QSpinBox *>(f) || qobject_cast<QDoubleSpinBox *>(f)) {
+    return true;
+  }
+  // Catch QAbstractSpinBox / inline editors that Qt nests inside item views.
+  if (f->inherits("QAbstractSpinBox") || f->inherits("QAbstractItemView")) {
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+bool TeleopPanel::eventFilter(QObject * /*obj*/, QEvent * ev) {
+  if (ev->type() != QEvent::KeyPress && ev->type() != QEvent::KeyRelease) {
+    return false;
+  }
+  auto * ke = static_cast<QKeyEvent *>(ev);
+  // Auto-repeat fires KeyPress over and over while holding — we already
+  // set the sector on the first press, so swallow the rest silently
+  // (returning false lets RViz still see them, which is fine).
+  if (ke->isAutoRepeat()) {
+    return false;
+  }
+  if (focusIsTextInput()) {
+    return false;
+  }
+  const int k = ke->key();
+  const bool press = (ev->type() == QEvent::KeyPress);
+
+  // Multiple key sets: arrow keys, WASD (gaming-style, S now = backward),
+  // IJKL (right-hand ROS teleop). Diagonals (Q/E/Y/C and U/O/M/.) feed v+w
+  // directly for arc motion instead of pure rotation. X / Space = stop.
+  TeleopPad::Sector s = TeleopPad::NONE;
+  bool use_sector = true;
+  double v_arc = 0.0, w_arc = 0.0;
+  switch (k) {
+    // forward
+    case Qt::Key_Up:    case Qt::Key_W: case Qt::Key_I:
+      s = TeleopPad::UP; break;
+    // backward
+    case Qt::Key_Down:  case Qt::Key_S: case Qt::Key_K: case Qt::Key_Comma:
+      s = TeleopPad::DOWN; break;
+    // left (pure rotation in place)
+    case Qt::Key_Left:  case Qt::Key_A: case Qt::Key_J:
+      s = TeleopPad::LEFT; break;
+    // right (pure rotation in place)
+    case Qt::Key_Right: case Qt::Key_D: case Qt::Key_L:
+      s = TeleopPad::RIGHT; break;
+    // stop
+    case Qt::Key_Space: case Qt::Key_X:
+      s = TeleopPad::STOP; break;
+    // diagonals: forward-left arc
+    case Qt::Key_Q: case Qt::Key_U:
+      use_sector = false; v_arc =  v_max_; w_arc =  w_max_ * 0.6; break;
+    // forward-right arc
+    case Qt::Key_E: case Qt::Key_O:
+      use_sector = false; v_arc =  v_max_; w_arc = -w_max_ * 0.6; break;
+    // backward-left arc
+    case Qt::Key_Y: case Qt::Key_M:
+      use_sector = false; v_arc = -v_max_; w_arc =  w_max_ * 0.6; break;
+    // backward-right arc
+    case Qt::Key_C: case Qt::Key_Period:
+      use_sector = false; v_arc = -v_max_; w_arc = -w_max_ * 0.6; break;
+    default: return false;
+  }
+  if (press) {
+    held_key_ = k;
+    if (use_sector) {
+      onSector(s);
+    } else {
+      v_ = v_arc; w_ = w_arc;
+    }
+  } else if (k == held_key_) {
+    held_key_ = 0;
+    if (use_sector) {
+      onSector(TeleopPad::NONE);
+    } else {
+      v_ = 0.0; w_ = 0.0;
+    }
+  }
+  // Consume so RViz doesn't also act on the same arrow press (some
+  // displays accept arrows for navigation).
+  return true;
 }
 
 void TeleopPanel::onSector(TeleopPad::Sector s) {

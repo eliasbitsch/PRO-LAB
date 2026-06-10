@@ -3,6 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # USER_UID/USER_GID come from docker/.env (auto-loaded by compose).
+      # That file pins them to the host user's IDs so bind-mounts (./results,
+      # ws/src) are owned consistently — no chmod 777 dance.
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
     image: prolab:jazzy
     container_name: prolab_jazzy
     hostname: prolab
@@ -14,60 +20,62 @@ services:
       - ROS_DOMAIN_ID=0
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - TURTLEBOT4_MODEL=standard
-      - DISPLAY=${DISPLAY:-:0}
-      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - DISPLAY=${DISPLAY:-:1}
       - XDG_RUNTIME_DIR=/tmp/runtime-ros
-      # Match native gz sim (run_gazebo_native.sh) so ros_gz_bridge & spawn
-      # see the externally running Gazebo over gz-transport.
+      # gz runs inside this container (start_gz:=true in the master launch).
+      # Partition keeps gz-transport scoped to this stack.
       - GZ_PARTITION=prolab
       - GZ_IP=127.0.0.1
-      # WSL2 GPU passthrough: use NVIDIA via Mesa D3D12
-      - GALLIUM_DRIVER=d3d12
-      - MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
-      - LIBGL_ALWAYS_SOFTWARE=0
-      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+      # NVIDIA GPU passthrough (compute + offscreen rendering). See the
+      # rendering split below.
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Rendering is split by graphics API, because this is a Wayland+Optimus
+      # host (Intel iGPU drives the XWayland :1 server; NVIDIA dGPU is offload):
+      #
+      #   GUI windows (RViz, gz GUI client) use *GLX* on the XWayland :1 server,
+      #   which is Mesa-backed -> they render on the Intel iGPU. We must NOT
+      #   force the NVIDIA GLX vendor here: under XWayland forcing libGLX_nvidia
+      #   yields `GLXBadFBConfig` and gz crashes. So no __GLX_VENDOR / zink
+      #   overrides (those were WSL-era hacks). Needs `xhost +local:` once.
+      #
+      #   Offscreen sensor rendering (gz `--headless-rendering`: the ogre2
+      #   render thread for gpu_lidar/camera) uses *EGL*. We pin the EGL vendor
+      #   to NVIDIA so the heavy raycasting/camera rendering in the headless
+      #   batch sweeps runs on the dGPU. Verified: gz loads gz-rendering-ogre2
+      #   and inits the render context on the NVIDIA EGL device (/dev/dri/card1)
+      #   with no GLX crash. __EGL_VENDOR_LIBRARY_FILENAMES affects only EGL
+      #   consumers, so the GLX GUI path above is untouched.
+      - __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+    # Pass the host's render-node device into the container. nvidia-container
+    # -toolkit handles /dev/nvidia*, but Gazebo also touches /dev/dri/* via
+    # Mesa probes, so we mount it explicitly for fallback paths.
+    devices:
+      - /dev/dri:/dev/dri
+    # Add the host's render group GID to the in-container user so it can
+    # access /dev/dri/renderD128 (which is rw for group only). HOST_RENDER_GID
+    # is set in docker/.env to match `getent group render` on the host.
+    group_add:
+      - "${HOST_RENDER_GID:-110}"
+      - "${HOST_VIDEO_GID:-44}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, graphics, utility, video, display]
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg:rw
-      - /usr/lib/wsl:/usr/lib/wsl:ro
       - ../ws/src:/home/ros/ws/src
+      # Bind-mount the results dir so csv_logger writes land directly on the
+      # host repo (./results/). Saves the docker-cp dance after every sweep.
+      - ../results:/home/ros/results:rw
       - prolab_build:/home/ros/ws/build
       - prolab_install:/home/ros/ws/install
       - prolab_log:/home/ros/ws/log
       - prolab_gz_cache:/home/ros/.gz
-    devices:
-      # WSL2 GPU device — required for Mesa D3D12 -> NVIDIA
-      - /dev/dxg:/dev/dxg
     command: bash
-
-  # Self-hosted Foxglove Studio web UI (husarion's pre-built image).
-  # Open http://localhost:8082 in any browser, then in the app:
-  #   "Open Connection" → "Foxglove WebSocket" → ws://localhost:8765
-  foxglove_ui:
-    image: ghcr.io/lichtblick-suite/lichtblick:latest
-    container_name: foxglove_ui
-    ports:
-      - "8082:8080"
-    volumes:
-      - ./foxglove_init.sh:/foxglove_init.sh:ro
-      - ../ws/src/pro_lab_filters/config/foxglove_layout.json:/layouts/prolab_layout.json:ro
-    entrypoint: ["/bin/sh", "/foxglove_init.sh"]
-    command: ["caddy", "file-server", "--listen", ":8080"]
-    restart: unless-stopped
-
-  # Publish the host-network foxglove_bridge (port 8765, only reachable
-  # inside the WSL2 distro because prolab uses network_mode: host) to a
-  # Docker-published port the Windows browser can reach via localhost:8765.
-  ws_publish:
-    image: alpine/socat:latest
-    container_name: prolab_ws_publish
-    ports:
-      - "8767:8765"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: >-
-      TCP-LISTEN:8765,fork,reuseaddr TCP:host.docker.internal:8765
-    restart: unless-stopped
 
 volumes:
   prolab_build:

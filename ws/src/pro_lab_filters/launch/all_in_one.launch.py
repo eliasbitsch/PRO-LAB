@@ -34,9 +34,11 @@ def generate_launch_description():
                               default_value=os.path.join(nav2_bringup, 'maps', 'warehouse.yaml')),
     ]
 
-    # 1. Headless Gazebo server
+    # 1. Headless Gazebo server. --headless-rendering routes the gpu_lidar/
+    # camera rendering through EGL, which is pinned to the NVIDIA dGPU in
+    # docker-compose; without it gz renders on the Mesa/iGPU GLX path.
     gz_server = ExecuteProcess(
-        cmd=['gz', 'sim', '-s', '-r', '-v', '3',
+        cmd=['gz', 'sim', '-s', '-r', '--headless-rendering', '-v', '3',
              PathJoinSubstitution([sim_dir, 'worlds', [world, '.sdf']])],
         output='screen',
     )
@@ -90,21 +92,5 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Foxglove WebSocket bridge (port 8765). Open Foxglove Studio (web or
-    # desktop) and connect to ws://localhost:8765, then load
-    # config/foxglove_layout.json from this package for a pre-built layout.
-    foxglove = Node(
-        package='foxglove_bridge',
-        executable='foxglove_bridge',
-        parameters=[{
-            'use_sim_time': True,
-            'port': 8765,
-            'address': '0.0.0.0',
-            'max_qos_depth': 25,
-            'send_buffer_limit': 10000000,
-        }],
-        output='screen',
-    )
-
     return LaunchDescription(args + [gz_server, robot_state_pub, spawn, nav2,
-                                     rviz, foxglove])
+                                     rviz])

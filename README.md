@@ -14,7 +14,7 @@ ws/src/pro_lab_filters/
 ├── include/pro_lab_filters/
 │   ├── KF.h, EKF.h, PF.h           # standalone (ROS-free) filter classes
 │   ├── LikelihoodField.h           # 2-pass Euclidean DT for /scan likelihood
-│   ├── teleop_panel.hpp            # Foxglove-style RViz teleop dpad
+│   ├── teleop_panel.hpp            # RViz teleop dpad (arrow keys, global)
 │   └── kidnap_tool.hpp             # RViz tool: click-to-teleport
 ├── src/
 │   ├── kf_node.cpp, ekf_node.cpp, pf_node.cpp     # 3 filter nodes
@@ -23,8 +23,7 @@ ws/src/pro_lab_filters/
 │   ├── map_odom_tf_publisher.cpp                  # AMCL-style map→odom
 │   ├── robot_teleporter.cpp                       # GZ live-teleport
 │   ├── landmark_detector_node.cpp                 # self-defined landmarks
-│   ├── teleop_panel.cpp, kidnap_tool.cpp          # RViz plugins
-│   └── teleop_marker_node.cpp                     # interactive_markers teleop
+│   └── teleop_panel.cpp, kidnap_tool.cpp          # RViz plugins
 ├── launch/
 │   ├── wrong_init_experiment.launch.py    # master launch (filter:= arg)
 │   ├── kf_only.launch.py                  # single-filter wrappers
@@ -36,9 +35,9 @@ ws/src/pro_lab_filters/
 │   ├── wrong_init.rviz
 │   └── gz_bridge.yaml
 └── scripts/csv_logger.py                  # per-run CSV writer
-docker/                                    # WSL2 + Docker setup
+docker/                                    # Docker setup (Linux + NVIDIA)
 scripts/
-├── start_all.sh                           # one-shot bringup (gz + ros + viz)
+├── start_all.sh                           # one-shot bringup (gz + ros + rviz)
 ├── run_experiments.sh                     # batch all scenarios × all filters
 └── analyze_results.py                     # RMSE plots from CSVs
 ```
@@ -75,9 +74,10 @@ PF additionally implements (textbook AMCL):
 ### Bring up the full stack
 
 ```bash
-bash scripts/start_all.sh --rviz                       # gz + filters + rviz
-bash scripts/start_all.sh --foxglove                   # gz + filters + lichtblick
-bash scripts/start_all.sh --rviz --scenario offset_5m
+bash scripts/start_all.sh                              # gz + filters + rviz
+bash scripts/start_all.sh --filter kf                  # only KF
+bash scripts/start_all.sh --scenario offset_5m
+bash scripts/start_all.sh --no-rviz                    # headless
 ```
 
 ### Single-filter testing
@@ -108,9 +108,8 @@ python3 scripts/analyze_results.py --in ./results --out ./results
 
 ### Live UI
 
-- **RViz**: full layout incl. teleop panel, kidnap tool, landmark markers,
-  particle cloud, all 3 filter pose arrows.
-- **Lichtblick** (Foxglove fork): same setup at <http://localhost:8082>.
+- **RViz**: full layout incl. teleop panel (arrow keys, global), kidnap tool,
+  landmark markers, particle cloud, all 3 filter pose arrows.
 
 ---
 
@@ -132,8 +131,9 @@ python3 scripts/analyze_results.py --in ./results --out ./results
 
 ## Setup notes
 
-- ROS 2 Jazzy + Gazebo Harmonic, native gz on WSL2 + ROS in Docker for GPU
-  consistency. See `docker/docker-compose.yml`.
+- ROS 2 Jazzy + Gazebo Harmonic, all in one Docker container on Ubuntu.
+  NVIDIA GPU passthrough via `nvidia-container-toolkit`. See
+  `docker/docker-compose.yml` and `docker/Dockerfile`.
 - Map origin in `nav2_bringup/maps/warehouse.yaml` is set up for spawn
   `(-8.0, -0.50, 0)` — that's our default. All wrong-init scenarios express
   their `init_x/y/yaw` as deltas from this baseline.

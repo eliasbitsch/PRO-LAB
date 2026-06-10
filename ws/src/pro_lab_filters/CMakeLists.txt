@@ -18,12 +18,17 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(visualization_msgs REQUIRED)
-find_package(interactive_markers REQUIRED)
 find_package(rviz_common REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
 find_package(rviz_default_plugins REQUIRED)
 find_package(rviz_rendering REQUIRED)
+# gz_transport_vendor / gz_msgs_vendor for the direct (non-bridged) ground
+# truth subscriber, used by gz_truth_relay.
+find_package(gz_transport_vendor REQUIRED)
+find_package(gz-transport REQUIRED)
+find_package(gz_msgs_vendor REQUIRED)
+find_package(gz-msgs REQUIRED)
 set(CMAKE_AUTOMOC ON)
 
 set(COMMON_DEPS
@@ -34,6 +39,7 @@ set(COMMON_DEPS
   geometry_msgs
   tf2
   tf2_ros
+  tf2_msgs
 )
 
 include_directories(include ${EIGEN3_INCLUDE_DIR})
@@ -45,6 +51,9 @@ ament_target_dependencies(kf_node ${COMMON_DEPS})
 add_executable(ekf_node src/ekf_node.cpp)
 ament_target_dependencies(ekf_node ${COMMON_DEPS})
 
+add_executable(ekf_lf_node src/ekf_lf_node.cpp)
+ament_target_dependencies(ekf_lf_node ${COMMON_DEPS})
+
 add_executable(pf_node src/pf_node.cpp)
 ament_target_dependencies(pf_node ${COMMON_DEPS})
 
@@ -54,12 +63,10 @@ ament_target_dependencies(truth_relay_node ${COMMON_DEPS})
 
 add_executable(metrics_node src/metrics_node.cpp)
 ament_target_dependencies(metrics_node ${COMMON_DEPS})
+target_include_directories(metrics_node PRIVATE ${EIGEN3_INCLUDE_DIR})
 
 add_executable(cmd_vel_watchdog src/cmd_vel_watchdog.cpp)
 ament_target_dependencies(cmd_vel_watchdog rclcpp geometry_msgs)
-
-add_executable(map_republisher src/map_republisher.cpp)
-ament_target_dependencies(map_republisher rclcpp nav_msgs)
 
 add_executable(robot_teleporter src/robot_teleporter.cpp)
 ament_target_dependencies(robot_teleporter rclcpp geometry_msgs)
@@ -68,22 +75,26 @@ add_executable(map_odom_tf_publisher src/map_odom_tf_publisher.cpp)
 ament_target_dependencies(map_odom_tf_publisher
     rclcpp geometry_msgs tf2 tf2_ros)
 
-add_executable(teleop_marker_node src/teleop_marker_node.cpp)
-ament_target_dependencies(teleop_marker_node
-    rclcpp geometry_msgs visualization_msgs interactive_markers)
-
 add_executable(landmark_detector_node src/landmark_detector_node.cpp)
 ament_target_dependencies(landmark_detector_node
     rclcpp std_msgs geometry_msgs visualization_msgs tf2 tf2_ros)
 
+add_executable(trajectory_player_node src/trajectory_player_node.cpp)
+ament_target_dependencies(trajectory_player_node
+    rclcpp std_msgs geometry_msgs nav_msgs)
+
+add_executable(gz_truth_relay src/gz_truth_relay.cpp)
+ament_target_dependencies(gz_truth_relay rclcpp geometry_msgs nav_msgs)
+target_link_libraries(gz_truth_relay gz-transport13::core gz-msgs10::core)
+
 install(TARGETS
-    kf_node ekf_node pf_node
-    truth_relay_node metrics_node
-    cmd_vel_watchdog map_republisher robot_teleporter map_odom_tf_publisher
-    teleop_marker_node landmark_detector_node
+    kf_node ekf_node ekf_lf_node pf_node
+    truth_relay_node metrics_node gz_truth_relay
+    cmd_vel_watchdog robot_teleporter map_odom_tf_publisher
+    landmark_detector_node trajectory_player_node
   DESTINATION lib/${PROJECT_NAME})
 
-# ── RViz2 panel plugin (Foxglove-style teleop dpad) ─────────────────────
+# ── RViz2 panel plugin (teleop dpad) ────────────────────────────────────
 add_library(pro_lab_rviz_plugins SHARED
     src/teleop_panel.cpp
     src/kidnap_tool.cpp
@@ -101,9 +112,12 @@ install(TARGETS pro_lab_rviz_plugins
 install(FILES rviz_plugins.xml DESTINATION share/${PROJECT_NAME})
 pluginlib_export_plugin_description_file(rviz_common rviz_plugins.xml)
 
-# Python scripts (CSV logger)
+# Python scripts (CSV logger + AMCL relay)
 install(PROGRAMS
     scripts/csv_logger.py
+    scripts/amcl_relay.py
+    scripts/amcl_init_pose.py
+    scripts/auto_kidnapper.py
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch config

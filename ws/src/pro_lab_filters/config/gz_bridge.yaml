@@ -1,9 +1,9 @@
 # ros_gz_bridge config: maps gz transport topics <-> ROS2 topics.
-# Used when gz sim runs natively in WSL and ROS runs in the container.
+# gz sim runs headless inside the same container as ROS.
 
 # /clock intentionally NOT bridged here — spawn_tb4.launch.py's bridge
 # (config: tb4_bridge.yaml) already does it. Multiple bridges publishing
-# /clock cause sim_time jumps that wreck Foxglove's TF buffer (map flicker).
+# /clock cause sim_time jumps that confuse TF buffers (map flicker).
 
 - ros_topic_name: "/cmd_vel"
   gz_topic_name: "/cmd_vel"
@@ -39,4 +39,25 @@
   gz_topic_name: "/world/warehouse/model/turtlebot4/joint_state"
   ros_type_name: "sensor_msgs/msg/JointState"
   gz_type_name: "gz.msgs.Model"
+  direction: GZ_TO_ROS
+
+# Real ground truth straight from the Gazebo world: pose/info publishes a
+# Pose_V of EVERY entity, every tick. We bridge it as TFMessage so the
+# truth_relay can pick the turtlebot4 child_frame_id out and republish it
+# as /ground_truth/pose. This is the ONLY source unaffected by AMCL's
+# map->odom estimate (which fails in the kidnapped scenario).
+- ros_topic_name: "/world/warehouse/pose/info"
+  gz_topic_name: "/world/warehouse/pose/info"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+
+# dynamic_pose only carries moving entities (the robot), not the whole
+# warehouse static scene. Used by truth_relay because the bridge drops
+# entity names when converting Pose_V to TFMessage — taking the first
+# transform from dynamic_pose gives us the robot deterministically.
+- ros_topic_name: "/world/warehouse/dynamic_pose/info"
+  gz_topic_name: "/world/warehouse/dynamic_pose/info"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
   direction: GZ_TO_ROS

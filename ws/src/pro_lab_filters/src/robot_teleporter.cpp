@@ -6,8 +6,8 @@
 //   /kidnap_pose  -> teleport the GZ model only (creates the kidnapped state)
 //   /initialpose  -> reinit the PF only        (RViz/AMCL-style recovery hint)
 //
-// In Foxglove configure a second "Publish" button (PoseWithCovarianceStamped
-// on /kidnap_pose) next to the built-in "Pose Estimate" tool.
+// Use the RViz Kidnap tool (provided by this package's pro_lab_rviz_plugins
+// library) to publish on /kidnap_pose with a single map click.
 #include <cstdlib>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -22,8 +22,8 @@ public:
     spawn_z_   = declare_parameter<double>("spawn_z", 0.05);
     partition_ = declare_parameter<std::string>("gz_partition", "prolab");
 
-    // Match Foxglove bridge's clientPublish QoS (RELIABLE + TRANSIENT_LOCAL)
-    // so we don't lose discovery after a browser F5 reconnect.
+    // RELIABLE + TRANSIENT_LOCAL so a published click survives any subscriber
+    // restart (RViz tool re-init, etc.) and isn't silently dropped.
     rclcpp::QoS qos(10);
     qos.reliable().transient_local();
     sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
