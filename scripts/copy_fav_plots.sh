@@ -19,6 +19,8 @@ FAVS=(
     offset_5m_trajectory_clean.png
     # Baseline: correct init, 10 seeds overlaid — every filter tracks truth
     correct_init_trajectory.png
+    # System data flow — ROS 2 topics in/out of each filter
+    dataflow.png
     # Method illustration — lecture-style 3-panel, one per required filter
     correct_init_kf_explainer.png
     correct_init_ekf_explainer.png

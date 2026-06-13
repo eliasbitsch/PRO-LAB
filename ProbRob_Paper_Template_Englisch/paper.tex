@@ -7,6 +7,8 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
@@ -50,7 +52,14 @@ The robotics community offers two broad answers to ``where am I?'': match raw ra
 \section{Materials and Methods}
 
 \subsection{Platform and simulation}
-All experiments run on a simulated TurtleBot~4 (differential drive) in Gazebo~\cite{Koenig2004} under ROS\,2~\cite{Macenski2022ROS2}. The robot exposes wheel odometry, an IMU, a 360$^\circ$ 2D lidar, and an OAK-D RGB camera. The world is a $30\times20$\,m warehouse containing eight steel I-beam pillars arranged in a regular $2\times4$ grid at $7.5$\,m spacing; this regularity is the source of the perceptual aliasing we study. Nav2's AMCL~\cite{Macenski2023Nav2} serves as the baseline. The four research filters (KF, EKF, EKF-LF, PF) are implemented in C++ from first principles; only the sensor frontend and plotting are scripted. Ground truth is taken directly from the simulator and is used \emph{only} to score error, never as a filter input.
+All experiments run on a simulated TurtleBot~4 (differential drive) in Gazebo~\cite{Koenig2004} under ROS\,2~\cite{Macenski2022ROS2}. The robot exposes wheel odometry, an IMU, a 360$^\circ$ 2D lidar, and an OAK-D RGB camera. The world is a $30\times20$\,m warehouse containing eight steel I-beam pillars arranged in a regular $2\times4$ grid at $7.5$\,m spacing; this regularity is the source of the perceptual aliasing we study. Nav2's AMCL~\cite{Macenski2023Nav2} serves as the baseline. The four research filters (KF, EKF, EKF-LF, PF) are implemented in C++ from first principles; only the sensor frontend and plotting are scripted. Ground truth is taken directly from the simulator and is used \emph{only} to score error, never as a filter input. Fig.~\ref{fig:dataflow} shows the ROS\,2 data flow: which topics enter each filter and what it publishes.
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.96\textwidth]{images/dataflow.png}
+    \caption{System data flow. Wheel odometry, \texttt{/cmd\_vel} and the IMU drive every filter's motion model; the camera image is turned by the AprilTag detector into \texttt{/landmarks/observations} consumed by the landmark filters (KF, EKF), while \texttt{/scan} drives the scan filters (EKF-LF, PF, AMCL). Each filter publishes \texttt{/<filter>/pose}; ground truth feeds the metrics only, never a filter.}
+    \label{fig:dataflow}
+\end{figure*}
 
 \subsection{Motion and measurement models}
 All filters consume the same control input. The EKF uses the odometry motion model~\cite{Thrun2005} on the unicycle state $\mathbf{x}=(x,y,\theta)^\top$, propagating
