@@ -104,7 +104,7 @@ We define seven scenarios that share the same scripted trajectory but differ in 
 Fig.~\ref{fig:explainer} contrasts the three regimes for the EKF in the nominal case. Pure dead reckoning drifts and, decisively, its uncertainty grows without bound: the filter does not know that it is wrong. Landmark observations periodically collapse the covariance and re-anchor the belief on the true trajectory. This bounded-uncertainty property, not raw accuracy, is what landmarks buy, as the results below make explicit.
 
 \subsection{Recovery from adverse initialization}
-Table~\ref{tab:rmse} and Fig.~\ref{fig:rmse} are the core result. Under nominal initialization all five filters localize to within $0.11$--$0.15$\,m and track the true path tightly across all seeds (Fig.~\ref{fig:traj_nominal}): when the start is correct, the sensing modality is irrelevant. The picture inverts sharply as the initial error grows. For a $5$\,m offset the landmark filters stay at $0.30$\,m while the scan filters degrade to $3.6$--$5.5$\,m, visibly drifting into a wrong but symmetric bay (Fig.~\ref{fig:traj}); with an overconfident wrong prior the gap is $0.3$\,m versus $3$--$5$\,m. The effect is starkest under kidnapping (Fig.~\ref{fig:kidnap}): the landmark EKF re-localizes to the new pose as soon as its camera reads a tag at the new location, ending at $2.6$--$3.0$\,m RMSE (dominated by the search interval, not the final error), whereas EKF-LF, PF, and AMCL diverge to $9$--$17$\,m. Notably, \texttt{offset\_1m} and \texttt{wrong\_yaw\_pi2} are recovered by \emph{all} filters: a small or purely rotational error keeps the scan within the basin of attraction of the correct hypothesis, so aliasing does not yet dominate.
+Table~\ref{tab:rmse} and Fig.~\ref{fig:rmse} are the core result. Under nominal initialization all five filters localize to within $0.11$--$0.15$\,m and track the true path tightly across all seeds (Fig.~\ref{fig:traj_nominal}): when the start is correct, the sensing modality is irrelevant. The picture inverts sharply as the initial error grows. For a $5$\,m offset the landmark filters stay at $0.30$\,m while the scan filters degrade to $3.6$--$5.5$\,m, drifting into a wrong but symmetric bay; with an overconfident wrong prior the gap is $0.3$\,m versus $3$--$5$\,m. The effect is starkest under kidnapping (Fig.~\ref{fig:kidnap}): the landmark EKF re-localizes to the new pose as soon as its camera reads a tag at the new location, ending at $2.6$--$3.0$\,m RMSE (dominated by the search interval, not the final error), whereas EKF-LF, PF, and AMCL diverge to $9$--$17$\,m. Notably, \texttt{offset\_1m} and \texttt{wrong\_yaw\_pi2} are recovered by \emph{all} filters: a small or purely rotational error keeps the scan within the basin of attraction of the correct hypothesis, so aliasing does not yet dominate.
 
 \begin{figure*}[!t]
     \centering
@@ -118,13 +118,6 @@ Table~\ref{tab:rmse} and Fig.~\ref{fig:rmse} are the core result. Under nominal 
     \includegraphics[width=\columnwidth]{images/correct_init_trajectory.png}
     \caption{Baseline (\texttt{correct\_init}), all ten seeds overlaid. With a correct start every filter tracks the true path tightly regardless of sensing modality --- the spread across seeds is small.}
     \label{fig:traj_nominal}
-\end{figure}
-
-\begin{figure}[!t]
-    \centering
-    \includegraphics[width=\columnwidth]{images/offset_5m_trajectory_clean.png}
-    \caption{Estimated trajectories under a $5$\,m wrong start. The landmark filters (KF, EKF) lock onto the true path (black); the scan filters (EKF-LF, PF, AMCL) drift away into a wrong but symmetric bay. Stars mark the AprilTag landmarks.}
-    \label{fig:traj}
 \end{figure}
 
 \begin{figure*}[!t]
