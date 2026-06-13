@@ -14,6 +14,9 @@ FAVS=(
     rmse_comparison.png
     convergence_rate.png
     runtime_comparison.png
+    # Trajectory comparison — all filters in one plot (landmark filters track
+    # truth, scan filters drift into the wrong symmetric bay)
+    offset_5m_trajectory_clean.png
     # Method illustration — lecture-style 3-panel, one per required filter
     correct_init_kf_explainer.png
     correct_init_ekf_explainer.png

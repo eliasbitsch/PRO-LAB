@@ -549,6 +549,31 @@ def plot_per_scenario(scenario: str, paths: list[Path], filters, out: Path,
     fig.savefig(out / f"{scenario}_trajectory.{fmt}")
     plt.close(fig)
 
+    # Clean trajectory comparison: ONE representative seed, one bold line per
+    # filter + truth. Readable enough for the paper (the multi-seed version
+    # above shows the spread, this one shows the comparison).
+    ts0 = read_timeseries(paths[0])
+    if "truth_x" in ts0:
+        fig, ax = plt.subplots(figsize=(7, 7))
+        tx, ty = _break_jumps(ts0["truth_x"], ts0["truth_y"])
+        ax.plot(tx, ty, color="k", lw=2.6, label="truth", zorder=10)
+        for f in filters:
+            xk, yk = f"{f}_x", f"{f}_y"
+            if xk in ts0 and yk in ts0:
+                fx, fy = _break_jumps(ts0[xk], ts0[yk])
+                ax.plot(fx, fy, color=COLOURS.get(f, "gray"), lw=1.8,
+                        alpha=0.9, label=f.upper())
+        for (mx, my) in LANDMARKS:
+            ax.scatter(mx, my, marker="*", s=120, color="tab:blue",
+                       edgecolor="k", zorder=9)
+        ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
+        ax.set_title(f"{scenario} — trajectory comparison (all filters)")
+        ax.set_aspect("equal", adjustable="datalim")
+        _legend_right(ax); ax.grid(alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(out / f"{scenario}_trajectory_clean.{fmt}")
+        plt.close(fig)
+
     # State vs time — truth (black) + each filter estimate, per axis (x, y, yaw).
     # Lecture-style "true vs estimated" plot (slides 6/7). Uses the first run.
     ts = read_timeseries(paths[0])
