@@ -55,6 +55,7 @@ docker exec -d "$CONTAINER" bash -lc "export DISPLAY=$DISPLAY_ENV; \
     scenario:=$SCENARIO filter:=all \
     use_nav2:=true use_amcl:=true use_rviz:=true \
     use_trajectory:=false gz_gui:=true start_gz:=true duration_s:=0 \
+    truth_tf:=true \
     > /home/ros/results/demo.log 2>&1"
 
 echo "── demo starting; windows appear in ~15-20 s. Log: results/demo.log ──"

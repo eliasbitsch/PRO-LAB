@@ -49,6 +49,7 @@ def generate_launch_description():
     start_gz   = LaunchConfiguration('start_gz')
     filter_sel = LaunchConfiguration('filter')
     seed       = LaunchConfiguration('seed')
+    truth_tf   = LaunchConfiguration('truth_tf')
 
     args = [
         DeclareLaunchArgument('scenario',   default_value='correct_init'),
@@ -90,6 +91,11 @@ def generate_launch_description():
                               description='Start the headless gz server inside the container. '
                                           'Set false only if a gz server is already running '
                                           'externally on the same GZ_PARTITION.'),
+        DeclareLaunchArgument('truth_tf',     default_value='false',
+                              description='DEMO ONLY: drive map->odom from /ground_truth/pose so '
+                                          'the RViz RobotModel sits on the TRUE robot pose (filters '
+                                          'visibly converge onto it). Off for scored runs, which '
+                                          'use the fixed spawn-derived static map->odom.'),
     ]
 
     scenario_file = PathJoinSubstitution(
@@ -374,16 +380,22 @@ def generate_launch_description():
     # the scenario YAML are world coords). This is a FIXED ground-truth
     # transform (not the PF estimate), so the truth reference is independent of
     # any filter — essential for a fair wrong-init comparison.
+    # Scored runs: FIXED spawn-derived static map->odom (truth reference is
+    # independent of any filter — essential for a fair wrong-init comparison).
+    # Disabled in demo mode (truth_tf:=true), where the truth-driven node below
+    # owns map->odom instead.
     map_odom_static = Node(
         package='tf2_ros', executable='static_transform_publisher',
         name='map_odom_static',
         arguments=[x_pose, y_pose, '0', yaw, '0', '0', 'map', 'odom'],
         parameters=[{'use_sim_time': True}],
         output='screen',
+        condition=UnlessCondition(truth_tf),
     )
-    # PF-driven dynamic map->odom is disabled: the eval compares every filter
-    # against the fixed ground-truth pose above, so map->odom must not depend on
-    # the PF estimate. (Kept for reference; condition never fires.)
+    # DEMO ONLY (truth_tf:=true): drive map->odom from /ground_truth/pose so the
+    # RViz RobotModel sits on the TRUE robot pose. Then odometry drift and kidnap
+    # jumps no longer displace the model, and the filter pose arrows visibly
+    # converge onto the real robot. NOT used for scored runs.
     map_odom_tf = Node(
         package='pro_lab_filters',
         executable='map_odom_tf_publisher',
@@ -391,12 +403,13 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'pose_topic':  '/pf/pose',
+            'pose_topic':  '/ground_truth/pose',
+            'pose_is_stamped': True,
             'map_frame':   'map',
             'odom_frame':  'odom',
             'base_frame':  'base_footprint',
         }],
-        condition=IfCondition('false'),
+        condition=IfCondition(truth_tf),
     )
 
     # ── Visualizer ───────────────────────────────────────────────────────
