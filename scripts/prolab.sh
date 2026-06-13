@@ -29,26 +29,26 @@ c_status() {                       # → "running" / "stopped" (+ colour)
 
 banner() {
   clear
-  printf "%b" "$CY"
-  cat <<'EOF'
-   ╭───────────────────────────────────────────────────────────────╮
-   │                                                                 │
-   │    ██████╗ ██████╗  ██████╗        ██╗      █████╗ ██████╗      │
-   │    ██╔══██╗██╔══██╗██╔═══██╗       ██║     ██╔══██╗██╔══██╗     │
-   │    ██████╔╝██████╔╝██║   ██║ ████╗ ██║     ███████║██████╔╝     │
-   │    ██╔═══╝ ██╔══██╗██║   ██║ ╚═══╝ ██║     ██╔══██║██╔══██╗     │
-   │    ██║     ██║  ██║╚██████╔╝       ███████╗██║  ██║██████╔╝     │
-   │    ╚═╝     ╚═╝  ╚═╝ ╚═════╝        ╚══════╝╚═╝  ╚═╝╚═════╝      │
-   │                                                                 │
-EOF
-  printf "   │      %bProbabilistic Robotics · Wrong-Initialization Study%b      │\n" "$B$MG" "$R$CY"
-  printf "   ╰───────────────────────────────────────────────────────────────╯%b\n" "$R"
-  printf "     %bTask%b      2510331021 · Wrong Initialization\n" "$D" "$R"
-  printf "     %bRobot%b     TurtleBot 4 · ROS 2 Jazzy · Gazebo Harmonic\n" "$D" "$R"
-  printf "     %bFilters%b   %bKF%b · %bEKF%b · %bEKF-LF%b · %bPF%b · %bAMCL%b  (KF/EKF self-implemented in C++)\n" \
-         "$D" "$R" "$BL" "$R" "$GR" "$R" "$MG" "$R" "$RE" "$R" "$YE" "$R"
-  printf "     %bLandmarks%b 8× AprilTag 36h11 read by the OAK-D camera\n" "$D" "$R"
-  printf "     %bContainer%b %s  (%s)\n" "$D" "$R" "$CONTAINER" "$(c_status)"
+  # blue→cyan gradient across the six logo rows (256-colour)
+  local g1='\033[38;5;27m' g2='\033[38;5;33m' g3='\033[38;5;39m'
+  local g4='\033[38;5;45m' g5='\033[38;5;51m' g6='\033[38;5;50m'
+  echo
+  printf "    %b██████╗ ██████╗  ██████╗      ██╗      █████╗ ██████╗ %b\n" "$g1" "$R"
+  printf "    %b██╔══██╗██╔══██╗██╔═══██╗     ██║     ██╔══██╗██╔══██╗%b\n" "$g2" "$R"
+  printf "    %b██████╔╝██████╔╝██║   ██║     ██║     ███████║██████╔╝%b\n" "$g3" "$R"
+  printf "    %b██╔═══╝ ██╔══██╗██║   ██║     ██║     ██╔══██║██╔══██╗%b\n" "$g4" "$R"
+  printf "    %b██║     ██║  ██║╚██████╔╝     ███████╗██║  ██║██████╔╝%b\n" "$g5" "$R"
+  printf "    %b╚═╝     ╚═╝  ╚═╝ ╚═════╝      ╚══════╝╚═╝  ╚═╝╚═════╝ %b\n" "$g6" "$R"
+  echo
+  printf "    %bProbabilistic Robotics%b  %b·%b  %bWrong-Initialization Study%b\n" \
+         "$B$CY" "$R" "$D" "$R" "$B$MG" "$R"
+  printf "    %b────────────────────────────────────────────────────────────%b\n" "$D" "$R"
+  printf "      %bTask%b       2510331021 · Wrong Initialization\n" "$D" "$R"
+  printf "      %bRobot%b      TurtleBot 4 · ROS 2 Jazzy · Gazebo Harmonic\n" "$D" "$R"
+  printf "      %bFilters%b    %bKF%b · %bEKF%b · %bEKF-LF%b · %bPF%b · %bAMCL%b   %b(KF/EKF self-implemented, C++)%b\n" \
+         "$D" "$R" "$BL" "$R" "$GR" "$R" "$MG" "$R" "$RE" "$R" "$YE" "$R" "$D" "$R"
+  printf "      %bLandmarks%b  8× AprilTag 36h11, read by the OAK-D camera\n" "$D" "$R"
+  printf "      %bContainer%b  %s  (%s)\n" "$D" "$R" "$CONTAINER" "$(c_status)"
   echo
 }
 

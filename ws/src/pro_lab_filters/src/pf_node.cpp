@@ -175,8 +175,13 @@ public:
     // model. The robot_teleporter listens on /kidnap_pose instead, so the
     // two experiments stay independent.
     // Spread is taken from the message covariance (sigma = sqrt(cov[0])).
+    // QoS must be VOLATILE: RViz's "2D Pose Estimate" publishes /initialpose
+    // with volatile durability, so a transient_local subscription is QoS-
+    // incompatible and would silently never receive it (the manual rescue
+    // would not work). A volatile subscriber still receives our transient_local
+    // amcl_init_pose start-up message too, so both paths work.
     rclcpp::QoS init_qos(10);
-    init_qos.reliable().transient_local();
+    init_qos.reliable();
     initpose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
       "/initialpose", init_qos,
       [this](geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr m) {
