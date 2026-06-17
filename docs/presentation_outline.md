@@ -1,8 +1,8 @@
 # PRO-LAB Presentation - Slide Outline & Speaker Notes
 
-**Talk: 10 minutes · ~12 slides · ~50 s each.** Figures are in
-`results/wrong_init/fav_plots/`. Drop them into your SharePoint deck slide by
-slide; the *Notes* are what to say.
+**Talk: 10 minutes · ~13 slides · ~45 s each.** Figures are in
+`results/wrong_init/fav_plots/` (noise figure: `results/noise_qr/noise_sensitivity.png`).
+Drop them into your SharePoint deck slide by slide; the *Notes* are what to say.
 
 ---
 
@@ -37,8 +37,9 @@ Elias Bitsch · Probabilistic Robotics Lab, FH Technikum Wien · Task 2510331021
   identifiable landmarks** (AprilTags).
 - **Question:** when the start is wrong, does a fancier *filter* help - or does
   *what you measure* decide recovery?
-- **Contribution:** controlled, 10-seed comparison of 5 filters × 7 adverse
-  scenarios; 4 filters self-implemented in C++; honest camera-read tag identity.
+- **Contribution:** controlled, 10-seed comparison of 5 filters × 11 scenarios
+  (7 adverse-init + 4 mandatory Q/R noise = 110 runs); 4 filters self-implemented
+  in C++; honest camera-read tag identity.
 
 > *Notes:* "The key question: is recovery about the estimator, or about the
 > observation model? I isolate that by giving every filter the same motion and
@@ -47,17 +48,19 @@ Elias Bitsch · Probabilistic Robotics Lab, FH Technikum Wien · Task 2510331021
 ---
 
 ## 4 · The five filters  (45 s)
-| Filter | Sensing | Belief |
-|---|---|---|
-| KF | landmark (AprilTag) | Gaussian (linear) |
-| EKF | landmark (AprilTag) | Gaussian (unicycle) |
-| EKF-LF | lidar likelihood field | Gaussian |
-| PF | lidar likelihood field | particles (+ augmented MCL) |
-| AMCL | lidar (Nav2 baseline) | particles |
+| Filter | State | Sensing | Belief |
+|---|---|---|---|
+| KF | (x,y,θ,ẋ,ẏ,θ̇) | landmark (AprilTag) | Gaussian (linear, const-velocity) |
+| EKF | (x,y,θ) | landmark (AprilTag) | Gaussian (unicycle) |
+| EKF-LF | (x,y,θ) | lidar likelihood field | Gaussian |
+| PF | (x,y,θ) ×N | lidar likelihood field | particles (+ augmented MCL) |
+| AMCL | (x,y,θ) ×N | lidar (Nav2 baseline) | particles |
 
 > *Notes:* "KF and EKF read the tags; EKF-LF, PF and AMCL match the laser scan.
-> Gaussian filters are one hypothesis; particle filters are many. I implemented
-> the first four from scratch; AMCL is the Nav2 baseline."
+> Gaussian filters track one hypothesis; particle filters many. The KF can't use
+> the trig unicycle and stay linear, so it carries velocities in its state and
+> learns them passively. I implemented the first four from scratch; AMCL is the
+> Nav2 baseline."
 
 ---
 
@@ -121,7 +124,23 @@ Elias Bitsch · Probabilistic Robotics Lab, FH Technikum Wien · Task 2510331021
 
 ---
 
-## 10 · Live demo  (1 min)
+## 10 · Mandatory check - noise tuning (Q & R)  (45 s)
+- *[figure: `noise_sensitivity.png`]*
+- Init at the truth, vary only the noise → it acts on **confidence, not accuracy**.
+- Consistency (NEES, ideal ≈ 3): **too little noise → over-confident**
+  (covariance too tight; PF collapses to NEES ~10⁸), **too much → conservative**.
+- KF/EKF stay best calibrated; the scan/particle filters are chronically
+  over-confident. Q = trust in the motion model, R = trust in the sensors.
+
+> *Notes:* "The lab also requires a process- and measurement-noise sweep. With a
+> correct start the error barely moves, so the interesting effect is on the
+> *covariance*: NEES shows that too-small noise makes a filter over-confident and
+> too-large makes it sluggish. KF and EKF stay closest to consistent; the
+> particle filter, trusting the scan too far, collapses its cloud."
+
+---
+
+## 11 · Live demo  (1 min)
 - Drive (teleop) → **kidnap** with the RViz arrow → KF/EKF snap back on their
   own → rescue PF/AMCL with **2D Pose Estimate**.
 - Launcher: `bash scripts/prolab.sh` → Live demo.
@@ -132,7 +151,7 @@ Elias Bitsch · Probabilistic Robotics Lab, FH Technikum Wien · Task 2510331021
 
 ---
 
-## 11 · Conclusion & outlook  (45 s)
+## 12 · Conclusion & outlook  (45 s)
 - **The observation model, not the filter, decides recovery** from a wrong start.
 - Caveat (honest): under nominal conditions landmarks add noise, not accuracy -
   the benefit is robustness + bounded uncertainty.
@@ -151,4 +170,4 @@ Elias Bitsch · Probabilistic Robotics Lab, FH Technikum Wien · Task 2510331021
 - Runtime / Big-O: `runtime_comparison.png` - Gaussian landmark filters are
   cheapest (O(n³)) vs O(M·R) for the samplers.
 - Error-over-time band: `wrong_yaw_pi2_error_xy.png`.
-- Full RMSE table (7 scenarios × 5 filters, mean ± 1σ) - see the paper.
+- Full RMSE table (11 scenarios × 5 filters, mean ± 1σ) + NEES table - see the paper.
